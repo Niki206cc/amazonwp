@@ -14,7 +14,12 @@
       <h3>{{ p.title }}</h3>
       {% if p.price %}<p class="price">{{ p.price }}</p>{% endif %}
       {% if p.asin %}<p class="muted">ASIN: {{ p.asin }}</p>{% endif %}
-      <a class="btn" href="{{ url_for('product_edit', product_id=p.id) }}">Apri</a>
+      <div class="actions">
+        <a class="btn" href="{{ url_for('product_edit', product_id=p.id) }}">Apri</a>
+        <form method="post" action="{{ url_for('product_delete', product_id=p.id) }}" onsubmit="return confirm('Eliminare questo prodotto e tutti gli articoli collegati?');" style="display:inline">
+          <button class="btn secondary" type="submit">Elimina</button>
+        </form>
+      </div>
     </div>
   </article>
 {% else %}
