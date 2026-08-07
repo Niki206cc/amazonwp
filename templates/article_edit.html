@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><h1>Revisione articolo</h1><p>{{ article.product_title }}</p></div><div class="actions">
+<form method="post" action="{{ url_for('article_approve', article_id=article.id) }}"><button class="btn success">Approva e metti in coda</button></form>
+<form method="post" action="{{ url_for('article_send_now', article_id=article.id) }}"><button class="btn secondary">Invio prova ora</button></form>
+</div></div>
+<form method="post" class="editor-layout">
+  <section class="panel">
+    <label>Titolo<input name="title" value="{{ article.title }}"></label>
+    <h3>5 titoli alternativi</h3>
+    {% for t in alt_titles %}<label>Titolo {{ loop.index }}<input name="alt_title_{{ loop.index }}" value="{{ t }}"></label>{% endfor %}
+    <label>Meta description<textarea name="meta_description" rows="3">{{ article.meta_description }}</textarea></label>
+    <label>Excerpt<textarea name="excerpt" rows="3">{{ article.excerpt }}</textarea></label>
+    <label>HTML WordPress<textarea id="htmlEditor" name="html" rows="24">{{ article.html }}</textarea></label>
+    <button class="btn" type="submit">Salva articolo</button>
+  </section>
+  <section class="panel preview-wrap"><h3>Anteprima</h3><iframe id="preview"></iframe></section>
+</form>
+<script>
+const ed=document.getElementById('htmlEditor'), pv=document.getElementById('preview');
+function update(){pv.srcdoc='<meta charset="utf-8"><style>body{font:16px Arial;line-height:1.6;padding:20px}img{max-width:100%}</style>'+ed.value}
+ed.addEventListener('input',update); update();
+</script>
+{% endblock %}

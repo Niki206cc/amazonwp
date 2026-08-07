@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Prodotti</h1><p>Gestisci i prodotti da trasformare in articoli.</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('product_new') }}">+ Nuovo prodotto</a><a class="btn secondary" href="{{ url_for('discover') }}">🎲 Suggeriscimi prodotti</a></div>
+</div>
+<div class="info">Articoli attualmente in coda: <strong>{{ queue_count }}</strong></div>
+<div class="grid cards">
+{% for p in products %}
+  <article class="card">
+    {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
+    <div class="card-body">
+      <span class="badge">{{ p.source }}</span>
+      <h3>{{ p.title }}</h3>
+      {% if p.price %}<p class="price">{{ p.price }}</p>{% endif %}
+      {% if p.asin %}<p class="muted">ASIN: {{ p.asin }}</p>{% endif %}
+      <a class="btn" href="{{ url_for('product_edit', product_id=p.id) }}">Apri</a>
+    </div>
+  </article>
+{% else %}
+  <div class="empty">Nessun prodotto inserito.</div>
+{% endfor %}
+</div>
+{% endblock %}

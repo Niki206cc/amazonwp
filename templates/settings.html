@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Impostazioni</h1>
+<form method="post">
+<section class="panel"><h2>AI</h2><div class="form-grid">
+<label>Motore<select name="ai_engine"><option value="openai" {% if settings.ai_engine=='openai' %}selected{% endif %}>OpenAI</option><option value="gemini" {% if settings.ai_engine=='gemini' %}selected{% endif %}>Gemini</option></select></label>
+<label>Modello OpenAI<input name="openai_model" value="{{ settings.openai_model }}"></label>
+<label class="full">OpenAI API key<input type="password" name="openai_api_key" value="{{ settings.openai_api_key }}"></label>
+<label>Modello Gemini<input name="gemini_model" value="{{ settings.gemini_model }}"></label>
+<label class="full">Gemini API key<input type="password" name="gemini_api_key" value="{{ settings.gemini_api_key }}"></label>
+</div></section>
+<section class="panel"><h2>SMTP / Postie</h2><div class="form-grid">
+<label>Host<input name="smtp_host" value="{{ settings.smtp_host }}"></label><label>Porta<input name="smtp_port" value="{{ settings.smtp_port }}"></label>
+<label>Utente<input name="smtp_user" value="{{ settings.smtp_user }}"></label><label>Password<input type="password" name="smtp_password" value="{{ settings.smtp_password }}"></label>
+<label>Mittente<input name="smtp_from" value="{{ settings.smtp_from }}"></label><label>Destinatario Postie<input name="smtp_to" value="{{ settings.smtp_to }}"></label>
+<label>Sicurezza<select name="smtp_security"><option value="starttls" {% if settings.smtp_security=='starttls' %}selected{% endif %}>STARTTLS</option><option value="ssl" {% if settings.smtp_security=='ssl' %}selected{% endif %}>SSL</option><option value="none" {% if settings.smtp_security=='none' %}selected{% endif %}>Nessuna</option></select></label>
+<label>Prefisso oggetto<input name="email_subject_prefix" value="{{ settings.email_subject_prefix }}" placeholder="es. [Tecnologia]"></label>
+</div></section>
+<section class="panel"><h2>Amazon Creators API</h2><div class="form-grid">
+<label>Credential ID<input name="amazon_credential_id" value="{{ settings.amazon_credential_id }}"></label><label>Secret<input type="password" name="amazon_secret" value="{{ settings.amazon_secret }}"></label>
+<label>Partner Tag<input name="amazon_partner_tag" value="{{ settings.amazon_partner_tag }}"></label><label>Marketplace<input name="amazon_marketplace" value="{{ settings.amazon_marketplace }}"></label>
+<label class="full">Token URL<input name="amazon_token_url" value="{{ settings.amazon_token_url }}"></label><label class="full">API base URL<input name="amazon_api_base" value="{{ settings.amazon_api_base }}"></label>
+</div></section>
+<section class="panel"><h2>Pubblicazione automatica</h2><div class="form-grid">
+<label>Ora<input type="time" name="publish_time" value="{{ settings.publish_time }}"></label><label>Giorni APScheduler<input name="publish_days" value="{{ settings.publish_days }}"><small>0=lun, 1=mar ... 6=dom. Esempio tutti i giorni: 0,1,2,3,4,5,6</small></label>
+<label class="check full"><input type="checkbox" name="scheduler_enabled" {% if settings.scheduler_enabled=='1' %}checked{% endif %}> Abilita pubblicazione automatica</label>
+</div></section>
+<button class="btn success" type="submit">Salva impostazioni</button>
+</form>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><h1>{{ product.title }}</h1><p>Modifica i dati e genera l'articolo.</p></div>
+<form method="post" action="{{ url_for('product_generate', product_id=product.id) }}"><button class="btn success">Genera articolo</button></form></div>
+{% if duplicate %}
+<div class="flash warning"><strong>Possibile duplicato.</strong> Esiste già l'articolo “{{ duplicate.article_title }}”, stato {{ duplicate.status }}{% if duplicate.published_at %}, pubblicato il {{ duplicate.published_at }}{% endif %}. Puoi comunque procedere.</div>
+{% endif %}
+<form method="post" class="panel form-grid">
+  <label>Titolo<input name="title" value="{{ product.title }}" required></label>
+  <label>Link Amazon<input name="amazon_url" value="{{ product.amazon_url or '' }}"></label>
+  <label>ASIN<input name="asin" value="{{ product.asin or '' }}"></label>
+  <label>Prezzo<input name="price" value="{{ product.price or '' }}"></label>
+  <label>Categoria<input name="category" value="{{ product.category or '' }}"></label>
+  <label>URL immagine<input name="image_url" value="{{ product.image_url or '' }}"></label>
+  <label class="full">Caratteristiche<textarea name="features" rows="6">{{ product.features or '' }}</textarea></label>
+  <label class="full">Note<textarea name="notes" rows="4">{{ product.notes or '' }}</textarea></label>
+  <div class="full"><button class="btn" type="submit">Salva modifiche</button></div>
+</form>
+{% if articles %}
+<h2>Articoli generati</h2>
+<div class="panel">
+{% for a in articles %}<div class="queue-row"><div><strong>{{ a.title }}</strong><div class="muted">{{ a.status }} · {{ a.ai_engine }}</div></div><a class="btn small" href="{{ url_for('article_edit', article_id=a.id) }}">Apri</a></div>{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

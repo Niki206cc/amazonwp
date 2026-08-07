@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><h1>Coda pubblicazione</h1><p>Il primo articolo verrà inviato per primo a Postie.</p></div><form method="post" action="{{ url_for('publish_next_route') }}"><button class="btn secondary">Pubblica il prossimo ora</button></form></div>
+<div class="panel">
+{% for i in items %}
+<div class="queue-row">
+  <div class="queue-pos">{{ i.position }}</div>
+  <div class="grow"><strong>{{ i.title }}</strong><div class="muted">{{ i.product_title }}</div></div>
+  <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='up') }}"><button class="icon">↑</button></form>
+  <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='down') }}"><button class="icon">↓</button></form>
+  <a class="btn small" href="{{ url_for('article_edit', article_id=i.article_id) }}">Modifica</a>
+  <form method="post" action="{{ url_for('queue_remove', qid=i.qid) }}"><button class="btn small danger">Rimuovi</button></form>
+</div>
+{% else %}<div class="empty">La coda è vuota.</div>{% endfor %}
+</div>
+{% endblock %}

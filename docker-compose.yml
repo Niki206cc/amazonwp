@@ -1,0 +1,12 @@
+services:
+  amazon-articoli-mp:
+    build: .
+    container_name: amazon-articoli-mp
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      - TZ=Europe/Rome
+      - APP_SECRET=change-me-now
+    volumes:
+      - ./data:/app/data

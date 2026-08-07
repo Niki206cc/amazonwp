@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Scopri prodotti Amazon</h1>
+<form method="post" class="panel discover-form">
+  <div class="preset-row">
+    <button name="mode" value="random" class="btn secondary">🎲 Casuali</button>
+    <button name="mode" value="trend" class="btn secondary">🔥 Trend</button>
+    <button name="mode" value="bestseller" class="btn secondary">⭐ Best Seller</button>
+    <button name="mode" value="new" class="btn secondary">🆕 Novità</button>
+    <button name="mode" value="deals" class="btn secondary">🏷️ Offerte</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='30'">💶 Sotto 30 €</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='50'">💶 Sotto 50 €</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='100'">💶 Sotto 100 €</button>
+  </div>
+  <div class="search-row"><input name="query" value="{{ query }}" placeholder="Ricerca libera, es. accessori auto"><input name="max_price" value="{{ max_price }}" placeholder="Prezzo max €"><button class="btn">Cerca</button></div>
+</form>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+<div class="grid cards">
+{% for p in products %}
+<article class="card {% if p.dismissed %}disabled{% endif %}">
+  {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
+  <div class="card-body">
+    {% if p.duplicate %}<span class="badge warning-badge">Già presente</span>{% endif %}
+    <h3>{{ p.title }}</h3><p class="price">{{ p.price }}</p><p class="muted">{{ p.asin }}</p>
+    {% if not p.dismissed %}<div class="actions">
+      <form method="post" action="{{ url_for('discover_add') }}">
+        {% for k in ['asin','title','amazon_url','image_url','price'] %}<input type="hidden" name="{{ k }}" value="{{ p[k] }}">{% endfor %}
+        <button class="btn success">Genera / apri</button>
+      </form>
+      <form method="post" action="{{ url_for('discover_dismiss') }}"><input type="hidden" name="asin" value="{{ p.asin }}"><input type="hidden" name="title" value="{{ p.title }}"><button class="btn danger">Scarta</button></form>
+    </div>{% else %}<span class="muted">Scartato</span>{% endif %}
+  </div>
+</article>
+{% endfor %}
+</div>
+{% endblock %}
