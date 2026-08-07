@@ -13,7 +13,7 @@
 <label>Host<input name="smtp_host" value="{{ settings.smtp_host }}"></label><label>Porta<input name="smtp_port" value="{{ settings.smtp_port }}"></label>
 <label>Utente<input name="smtp_user" value="{{ settings.smtp_user }}"></label><label>Password<input type="password" name="smtp_password" value="{{ settings.smtp_password }}"></label>
 <label>Mittente<input name="smtp_from" value="{{ settings.smtp_from }}"></label><label>Destinatario Postie<input name="smtp_to" value="{{ settings.smtp_to }}"></label>
-<label>Sicurezza<select name="smtp_security"><option value="starttls" {% if settings.smtp_security=='starttls' %}selected{% endif %}>STARTTLS</option><option value="ssl" {% if settings.smtp_security=='ssl' %}selected{% endif %}>SSL</option><option value="none" {% if settings.smtp_security=='none' %}selected{% endif %}>Nessuna</option></select></label>
+<label>Sicurezza<select name="smtp_security"><option value="ssl" {% if settings.smtp_security=='ssl' %}selected{% endif %}>SSL/TLS implicito (porta 465)</option><option value="starttls" {% if settings.smtp_security=='starttls' %}selected{% endif %}>STARTTLS (porta 587)</option><option value="none" {% if settings.smtp_security=='none' %}selected{% endif %}>Nessuna</option></select><small>Con porta 465 il programma forza automaticamente SSL/TLS.</small></label>
 <label>Prefisso oggetto<input name="email_subject_prefix" value="{{ settings.email_subject_prefix }}" placeholder="es. [Tecnologia]"></label>
 </div></section>
 <section class="panel"><h2>Amazon Creators API</h2><div class="form-grid">
