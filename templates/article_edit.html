@@ -6,9 +6,8 @@
 </div></div>
 <form method="post" class="editor-layout">
   <section class="panel">
-    <label>Titolo<input name="title" value="{{ article.title }}"></label>
-    <h3>5 titoli alternativi</h3>
-    {% for t in alt_titles %}<label>Titolo {{ loop.index }}<input name="alt_title_{{ loop.index }}" value="{{ t }}"></label>{% endfor %}
+    <label>Titolo articolo<input name="title" value="{{ article.title }}"></label>
+    <label>Titolo Facebook<input name="alt_title_1" value="{{ alt_titles[0] if alt_titles else '' }}"></label>
     <label>Meta description<textarea name="meta_description" rows="3">{{ article.meta_description }}</textarea></label>
     <label>Excerpt<textarea name="excerpt" rows="3">{{ article.excerpt }}</textarea></label>
     <label>HTML WordPress<textarea id="htmlEditor" name="html" rows="24">{{ article.html }}</textarea></label>
