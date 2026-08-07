@@ -2,6 +2,8 @@ from pathlib import Path
 import json
 import shutil
 import urllib.request
+import re
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
 
 from config import SECRET_KEY, HOST, PORT, UPLOAD_DIR
@@ -13,6 +15,39 @@ from scheduler import configure_scheduler, start_scheduler
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+
+def affiliate_url(url, asin="", partner_tag=""):
+    """Restituisce un URL Amazon con il Partner Tag configurato."""
+    url = (url or "").strip()
+    asin = (asin or "").strip().upper()
+    partner_tag = (partner_tag or "").strip()
+
+    if not url and asin:
+        url = f"https://www.amazon.it/dp/{asin}"
+    if not url or not partner_tag:
+        return url
+
+    try:
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").lower()
+        if "amazon." not in host:
+            return url
+        query = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() != "tag"]
+        query.append(("tag", partner_tag))
+        return urlunparse((parsed.scheme or "https", parsed.netloc, parsed.path, parsed.params, urlencode(query), parsed.fragment))
+    except Exception:
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}tag={partner_tag}"
+
+
+def ensure_affiliate_links(html, partner_tag):
+    """Aggiunge il Partner Tag a tutti gli URL Amazon presenti nell'HTML generato."""
+    if not html or not partner_tag:
+        return html
+
+    pattern = re.compile(r'https?://(?:www\.)?amazon\.it/[^\s"\'<>]+', re.I)
+    return pattern.sub(lambda m: affiliate_url(m.group(0), partner_tag=partner_tag), html)
 
 
 def rowdict(r):
@@ -32,11 +67,18 @@ def save_remote_image(url, product_id):
         return None
 
 
-def article_payload(product):
+def article_payload(product, settings=None):
+    settings = settings or get_settings()
+    partner_tag = settings.get("amazon_partner_tag", "")
+    affiliated = affiliate_url(
+        product.get("amazon_url", ""),
+        product.get("asin", ""),
+        partner_tag,
+    )
     return {
         "asin": product.get("asin", ""),
         "title": product.get("title", ""),
-        "amazon_url": product.get("amazon_url", ""),
+        "amazon_url": affiliated,
         "image_url": product.get("image_url", ""),
         "price": product.get("price", ""),
         "category": product.get("category", ""),
@@ -167,7 +209,9 @@ def product_generate(product_id):
     if not p:
         return "Prodotto non trovato", 404
     try:
-        result = generate_article(get_settings(), article_payload(dict(p)))
+        settings = get_settings()
+        result = generate_article(settings, article_payload(dict(p), settings))
+        result["html"] = ensure_affiliate_links(result.get("html", ""), settings.get("amazon_partner_tag", ""))
         with get_db() as db:
             cur = db.execute("""INSERT INTO articles(product_id,title,alt_titles,meta_description,excerpt,html,ai_engine,status,created_at,updated_at)
                               VALUES(?,?,?,?,?,?,?,'draft',?,?)""",
@@ -184,19 +228,25 @@ def product_generate(product_id):
 @app.route("/article/<int:article_id>", methods=["GET", "POST"])
 def article_edit(article_id):
     with get_db() as db:
-        a = db.execute("SELECT a.*,p.title product_title,p.amazon_url,p.local_image FROM articles a JOIN products p ON p.id=a.product_id WHERE a.id=?", (article_id,)).fetchone()
+        a = db.execute("SELECT a.*,p.title product_title,p.amazon_url,p.local_image,p.image_url FROM articles a JOIN products p ON p.id=a.product_id WHERE a.id=?", (article_id,)).fetchone()
     if not a:
         return "Articolo non trovato", 404
     if request.method == "POST":
         titles = [request.form.get(f"alt_title_{i}", "").strip() for i in range(1,6)]
+        html = ensure_affiliate_links(request.form.get("html", ""), get_settings().get("amazon_partner_tag", ""))
         with get_db() as db:
             db.execute("""UPDATE articles SET title=?,alt_titles=?,meta_description=?,excerpt=?,html=?,updated_at=? WHERE id=?""",
-                       (request.form.get("title",""), json.dumps(titles, ensure_ascii=False), request.form.get("meta_description",""), request.form.get("excerpt",""), request.form.get("html",""), now(), article_id))
+                       (request.form.get("title",""), json.dumps(titles, ensure_ascii=False), request.form.get("meta_description",""), request.form.get("excerpt",""), html, now(), article_id))
         flash("Articolo salvato.", "success")
         return redirect(url_for("article_edit", article_id=article_id))
     alt_titles = json.loads(a["alt_titles"] or "[]")
     alt_titles = (alt_titles + [""]*5)[:5]
-    return render_template("article_edit.html", article=a, alt_titles=alt_titles)
+    preview_image = ""
+    if a["local_image"]:
+        preview_image = url_for("uploads", filename=Path(a["local_image"]).name)
+    elif a["image_url"]:
+        preview_image = a["image_url"]
+    return render_template("article_edit.html", article=a, alt_titles=alt_titles, preview_image=preview_image)
 
 
 @app.post("/article/<int:article_id>/approve")
@@ -280,10 +330,12 @@ def discover():
 @app.post("/discover/add")
 def discover_add():
     asin = request.form.get("asin", "")
+    settings = get_settings()
+    amazon_url = affiliate_url(request.form.get("amazon_url", ""), asin, settings.get("amazon_partner_tag", ""))
     with get_db() as db:
         cur = db.execute("""INSERT INTO products(asin,title,amazon_url,image_url,price,category,features,notes,source,status,created_at,updated_at)
                           VALUES(?,?,?,?,?,'','','','amazon','draft',?,?)""",
-                         (asin, request.form.get("title",""), request.form.get("amazon_url",""), request.form.get("image_url",""), request.form.get("price",""), now(), now()))
+                         (asin, request.form.get("title",""), amazon_url, request.form.get("image_url",""), request.form.get("price",""), now(), now()))
         pid = cur.lastrowid
         local = save_remote_image(request.form.get("image_url", ""), pid)
         if local:
@@ -307,10 +359,9 @@ def settings_page():
             "ai_engine","openai_api_key","openai_model","gemini_api_key","gemini_model",
             "smtp_host","smtp_port","smtp_user","smtp_password","smtp_from","smtp_to","smtp_security",
             "amazon_credential_id","amazon_secret","amazon_partner_tag","amazon_marketplace","amazon_token_url","amazon_api_base",
-            "publish_days","publish_time","email_subject_prefix"
+            "publish_days","publish_time","timezone",
         ]
-        values = {k: request.form.get(k, "") for k in allowed}
-        values["scheduler_enabled"] = "1" if request.form.get("scheduler_enabled") else "0"
+        values = {k: request.form.get(k, "").strip() for k in allowed}
         set_settings(values)
         configure_scheduler(get_settings(), publish_next)
         flash("Impostazioni salvate.", "success")
@@ -318,20 +369,14 @@ def settings_page():
     return render_template("settings.html", settings=get_settings())
 
 
-@app.post("/publish-next")
-def publish_next_route():
-    publish_next()
-    flash("Tentativo di pubblicazione completato. Controlla la coda e gli eventuali errori.", "success")
-    return redirect(url_for("queue_page"))
-
-
 @app.route("/uploads/<path:filename>")
 def uploads(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
+init_db()
+start_scheduler()
+configure_scheduler(get_settings(), publish_next)
+
 if __name__ == "__main__":
-    init_db()
-    configure_scheduler(get_settings(), publish_next)
-    start_scheduler()
     app.run(host=HOST, port=PORT, debug=False)
