@@ -3,7 +3,6 @@ import json
 import shutil
 import urllib.request
 import re
-from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
 
 from config import SECRET_KEY, HOST, PORT, UPLOAD_DIR
@@ -18,29 +17,24 @@ app.secret_key = SECRET_KEY
 
 
 def affiliate_url(url, asin="", partner_tag=""):
+    """Restituisce sempre un URL Amazon canonico con il Partner Tag configurato."""
     url = (url or "").strip()
-    asin = (asin or "").strip().upper()
+    asin = (asin or "").strip().upper() or extract_asin(url)
     partner_tag = (partner_tag or "").strip()
-    if not url and asin:
-        url = f"https://www.amazon.it/dp/{asin}"
-    if not url or not partner_tag:
+
+    if not asin:
         return url
-    try:
-        parsed = urlparse(url)
-        host = (parsed.netloc or "").lower()
-        if "amazon." not in host:
-            return url
-        query = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() != "tag"]
-        query.append(("tag", partner_tag))
-        return urlunparse((parsed.scheme or "https", parsed.netloc, parsed.path, parsed.params, urlencode(query), parsed.fragment))
-    except Exception:
-        sep = "&" if "?" in url else "?"
-        return f"{url}{sep}tag={partner_tag}"
+
+    canonical = f"https://www.amazon.it/dp/{asin}"
+    if partner_tag:
+        canonical += f"?tag={partner_tag}"
+    return canonical
 
 
 def ensure_affiliate_links(html, partner_tag):
     if not html or not partner_tag:
         return html
+
     pattern = re.compile(r'https?://(?:www\.)?amazon\.it/[^\s"\'<>]+', re.I)
     return pattern.sub(lambda m: affiliate_url(m.group(0), partner_tag=partner_tag), html)
 
