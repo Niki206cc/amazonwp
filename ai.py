@@ -8,10 +8,23 @@ Non inventare specifiche, certificazioni, recensioni, prezzi, sconti o esperienz
 Scrivi in italiano naturale, giornalistico, scorrevole e utile.
 L'HTML deve essere semplice e compatibile WordPress: paragrafi, <strong>, ul/li e link. Non usare tag h1/h2/h3.
 Il titolo deve essere separato dal corpo HTML.
+
+TITOLO ARTICOLO:
+- Genera un vero titolo editoriale: NON limitarti a copiare il titolo commerciale Amazon fornito nei dati prodotto.
+- Il titolo deve essere diretto, naturale e interessante, mantenendo il nome del prodotto o del marchio quando utile.
+- Rispetta rigorosamente le maiuscole della lingua italiana: usa la maiuscola all'inizio del titolo e per nomi propri, marchi, sigle o denominazioni che la richiedono.
+- NON usare il Title Case inglese e NON mettere la maiuscola a parole comuni come Friggitrice, Aria, Cucina, Protezione, Solare, Tua, Molto, Altro.
+- Esempio sbagliato: \"La Cosori Turbo Blaze: Frittura ad Aria e Molto Altro per la Tua Cucina\".
+- Esempio corretto: \"Cosori Turbo Blaze: la friggitrice ad aria che semplifica la cucina di ogni giorno\".
+
+TITOLO FACEBOOK:
+- Genera un solo titolo Facebook distinto dal titolo dell'articolo.
+- Deve essere più coinvolgente e incuriosire al clic, ma senza clickbait ingannevole, promesse non dimostrate o informazioni inventate.
+- Anche il titolo Facebook deve rispettare le normali maiuscole italiane e NON deve usare il Title Case inglese.
+
 Inserisci il link Amazon in modo naturale almeno una volta usando rel=\"sponsored nofollow\".
 Chiudi con una breve dichiarazione trasparente: \"In qualità di Affiliato Amazon, Montagne & Paesi riceve un guadagno dagli acquisti idonei.\"
-Restituisci SOLO JSON valido con chiavi: title, alt_titles, meta_description, excerpt, html.
-alt_titles deve contenere esattamente 5 titoli alternativi.
+Restituisci SOLO JSON valido con chiavi: title, facebook_title, meta_description, excerpt, html.
 """
 
 
@@ -74,11 +87,19 @@ def generate_gemini(settings, product):
 def generate_article(settings, product):
     engine = (settings.get("ai_engine") or "openai").lower()
     result = generate_gemini(settings, product) if engine == "gemini" else generate_openai(settings, product)
-    titles = result.get("alt_titles") or []
-    if not isinstance(titles, list):
-        titles = [str(titles)]
-    result["alt_titles"] = titles[:5]
-    while len(result["alt_titles"]) < 5:
-        result["alt_titles"].append(result.get("title", product.get("title", "Prodotto Amazon")))
+
+    title = str(result.get("title") or "").strip()
+    if not title:
+        title = product.get("title", "Prodotto Amazon")
+    result["title"] = title
+
+    facebook_title = str(result.get("facebook_title") or "").strip()
+    if not facebook_title:
+        facebook_title = title
+    result["facebook_title"] = facebook_title
+
+    # Manteniamo il campo storico alt_titles nel database per compatibilità,
+    # ma dalla v1.1.3 contiene esclusivamente il Titolo Facebook.
+    result["alt_titles"] = [facebook_title]
     result["engine"] = engine
     return result
