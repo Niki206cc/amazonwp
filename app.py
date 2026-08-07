@@ -249,6 +249,21 @@ def article_edit(article_id):
     return render_template("article_edit.html", article=a, alt_titles=alt_titles, preview_image=preview_image)
 
 
+@app.post("/article/<int:article_id>/delete")
+def article_delete(article_id):
+    with get_db() as db:
+        article = db.execute("SELECT product_id,title FROM articles WHERE id=?", (article_id,)).fetchone()
+        if not article:
+            flash("Articolo non trovato.", "error")
+            return redirect(url_for("index"))
+        product_id = article["product_id"]
+        db.execute("DELETE FROM queue WHERE article_id=?", (article_id,))
+        db.execute("DELETE FROM articles WHERE id=?", (article_id,))
+    normalize_queue()
+    flash("Articolo eliminato.", "success")
+    return redirect(url_for("product_edit", product_id=product_id))
+
+
 @app.post("/article/<int:article_id>/approve")
 def article_approve(article_id):
     with get_db() as db:
