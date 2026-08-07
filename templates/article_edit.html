@@ -18,7 +18,7 @@
 </form>
 <script>
 const ed=document.getElementById('htmlEditor'), pv=document.getElementById('preview');
-function update(){pv.srcdoc='<meta charset="utf-8"><style>body{font:16px Arial;line-height:1.6;padding:20px}img{max-width:100%}</style>'+ed.value}
+function update(){const image={{ preview_image|tojson }}; const photo=image ? '<img src="'+image.replace(/"/g,'&quot;')+'" alt="{{ article.product_title|e }}" style="display:block;max-width:100%;max-height:460px;object-fit:contain;margin:0 auto 24px">' : ''; pv.srcdoc='<meta charset="utf-8"><base target="_blank"><style>body{font:16px Arial;line-height:1.6;padding:20px}img{max-width:100%;height:auto}</style>'+photo+ed.value}
 ed.addEventListener('input',update); update();
 </script>
 {% endblock %}
