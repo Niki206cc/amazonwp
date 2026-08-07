@@ -19,7 +19,17 @@
 {% if articles %}
 <h2>Articoli generati</h2>
 <div class="panel">
-{% for a in articles %}<div class="queue-row"><div><strong>{{ a.title }}</strong><div class="muted">{{ a.status }} · {{ a.ai_engine }}</div></div><a class="btn small" href="{{ url_for('article_edit', article_id=a.id) }}">Apri</a></div>{% endfor %}
+{% for a in articles %}
+<div class="queue-row">
+  <div><strong>{{ a.title }}</strong><div class="muted">{{ a.status }} · {{ a.ai_engine }}</div></div>
+  <div class="actions">
+    <a class="btn small" href="{{ url_for('article_edit', article_id=a.id) }}">Apri</a>
+    <form method="post" action="{{ url_for('article_delete', article_id=a.id) }}" onsubmit="return confirm('Eliminare definitivamente questo articolo?');">
+      <button class="btn small secondary" type="submit">Elimina</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
 </div>
 {% endif %}
 {% endblock %}
