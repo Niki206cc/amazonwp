@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="page-head"><div><h1>Coda pubblicazione</h1><p>Il primo articolo verrà inviato per primo a Postie.</p></div><form method="post" action="{{ url_for('publish_next_route') }}"><button class="btn secondary">Pubblica il prossimo ora</button></form></div>
+<div class="page-head"><div><h1>Coda pubblicazione</h1><p>Il primo articolo verrà inviato per primo a Postie.</p></div></div>
 <div class="panel">
 {% for i in items %}
 <div class="queue-row">
