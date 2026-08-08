@@ -1,4 +1,5 @@
 from pathlib import Path
+import html as html_lib
 import json
 import shutil
 import urllib.request
@@ -16,15 +17,18 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
 
+@app.context_processor
+def inject_ui_settings():
+    settings = get_settings()
+    return {"ui_show_discover": settings.get("show_discover", "1") == "1"}
+
+
 def affiliate_url(url, asin="", partner_tag=""):
-    """Restituisce sempre un URL Amazon canonico con il Partner Tag configurato."""
     url = (url or "").strip()
     asin = (asin or "").strip().upper() or extract_asin(url)
     partner_tag = (partner_tag or "").strip()
-
     if not asin:
         return url
-
     canonical = f"https://www.amazon.it/dp/{asin}"
     if partner_tag:
         canonical += f"?tag={partner_tag}"
@@ -34,9 +38,96 @@ def affiliate_url(url, asin="", partner_tag=""):
 def ensure_affiliate_links(html, partner_tag):
     if not html or not partner_tag:
         return html
-
     pattern = re.compile(r'https?://(?:www\.)?amazon\.it/[^\s"\'<>]+', re.I)
     return pattern.sub(lambda m: affiliate_url(m.group(0), partner_tag=partner_tag), html)
+
+
+def _clean_text(value):
+    value = re.sub(r"<[^>]+>", " ", value or "")
+    value = html_lib.unescape(value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _first_match(page, patterns):
+    for pattern in patterns:
+        m = re.search(pattern, page, re.I | re.S)
+        if m:
+            return _clean_text(m.group(1))
+    return ""
+
+
+def scrape_amazon_product(url):
+    """Recupera i dati essenziali dalla pagina pubblica Amazon senza Creators API."""
+    url = (url or "").strip()
+    if not url or "amazon.it" not in url.lower():
+        raise RuntimeError("Inserisci un link prodotto Amazon.it valido.")
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+            "Accept-Language": "it-IT,it;q=0.9,en;q=0.6",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            page = response.read().decode("utf-8", errors="ignore")
+    except Exception as exc:
+        raise RuntimeError(f"Impossibile aprire la pagina Amazon: {exc}")
+
+    if "api-services-support@amazon.com" in page or "Type the characters you see" in page or "Inserisci i caratteri" in page:
+        raise RuntimeError("Amazon ha mostrato un controllo CAPTCHA. Riprova più tardi oppure compila il prodotto manualmente.")
+
+    asin = extract_asin(url)
+    if not asin:
+        asin = _first_match(page, [r'"asin"\s*:\s*"([A-Z0-9]{10})"', r'name="ASIN"\s+value="([A-Z0-9]{10})"'])
+
+    title = _first_match(page, [
+        r'id="productTitle"[^>]*>(.*?)</span>',
+        r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"',
+        r'<title>(.*?)</title>',
+    ])
+    title = re.sub(r"\s*:\s*Amazon\.it.*$", "", title, flags=re.I).strip()
+
+    image_url = _first_match(page, [
+        r'id="landingImage"[^>]+data-old-hires="([^"]+)"',
+        r'id="landingImage"[^>]+src="([^"]+)"',
+        r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"',
+    ])
+
+    price = _first_match(page, [
+        r'class="a-offscreen"[^>]*>([^<]*€[^<]*)</span>',
+        r'id="priceblock_ourprice"[^>]*>(.*?)</span>',
+        r'id="priceblock_dealprice"[^>]*>(.*?)</span>',
+    ])
+
+    category = _first_match(page, [
+        r'id="wayfinding-breadcrumbs_feature_div".*?<ul[^>]*>.*?<li[^>]*>.*?<a[^>]*>(.*?)</a>',
+    ])
+
+    features = []
+    feature_block = re.search(r'id="feature-bullets".*?</div>\s*</div>', page, re.I | re.S)
+    if feature_block:
+        for item in re.findall(r'<span[^>]+class="a-list-item"[^>]*>(.*?)</span>', feature_block.group(0), re.I | re.S):
+            text = _clean_text(item)
+            if text and len(text) > 4 and text not in features:
+                features.append(text)
+            if len(features) >= 8:
+                break
+
+    settings = get_settings()
+    canonical = affiliate_url(url, asin, settings.get("amazon_partner_tag", ""))
+    return {
+        "asin": asin,
+        "title": title,
+        "amazon_url": canonical,
+        "image_url": image_url,
+        "price": price,
+        "category": category,
+        "features": "\n".join(features),
+        "notes": "",
+    }
 
 
 def save_remote_image(url, product_id):
@@ -54,11 +145,7 @@ def save_remote_image(url, product_id):
 
 def article_payload(product, settings=None):
     settings = settings or get_settings()
-    affiliated = affiliate_url(
-        product.get("amazon_url", ""),
-        product.get("asin", ""),
-        settings.get("amazon_partner_tag", ""),
-    )
+    affiliated = affiliate_url(product.get("amazon_url", ""), product.get("asin", ""), settings.get("amazon_partner_tag", ""))
     return {
         "asin": product.get("asin", ""),
         "title": product.get("title", ""),
@@ -129,8 +216,21 @@ def index():
 @app.route("/product/new", methods=["GET", "POST"])
 def product_new():
     if request.method == "POST":
+        action = request.form.get("action", "save")
         url = request.form.get("amazon_url", "").strip()
+
+        if action == "fetch":
+            try:
+                product = scrape_amazon_product(url)
+                flash("Dati recuperati da Amazon. Controllali e poi salva il prodotto.", "success")
+                return render_template("product_form.html", product=product)
+            except Exception as exc:
+                product = {"amazon_url": url}
+                flash(str(exc), "error")
+                return render_template("product_form.html", product=product)
+
         asin = request.form.get("asin", "").strip().upper() or extract_asin(url)
+        url = affiliate_url(url, asin, get_settings().get("amazon_partner_tag", ""))
         product = {
             "asin": asin,
             "title": request.form.get("title", "").strip(),
@@ -179,6 +279,7 @@ def product_edit(product_id):
     if request.method == "POST":
         url = request.form.get("amazon_url", "").strip()
         asin = request.form.get("asin", "").strip().upper() or extract_asin(url)
+        url = affiliate_url(url, asin, get_settings().get("amazon_partner_tag", ""))
         with get_db() as db:
             db.execute(
                 """UPDATE products SET asin=?,title=?,amazon_url=?,image_url=?,price=?,category=?,features=?,notes=?,updated_at=? WHERE id=?""",
@@ -306,7 +407,7 @@ def article_send_now(article_id):
 def queue_page():
     with get_db() as db:
         items = db.execute(
-            """SELECT q.id qid,q.position,a.id article_id,a.title,a.status,p.title product_title
+            """SELECT q.id qid,q.position,a.id article_id,a.title,a.status,p.title product_title,p.local_image,p.image_url
                FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id ORDER BY q.position"""
         ).fetchall()
     return render_template("queue.html", items=items)
@@ -390,11 +491,13 @@ def settings_page():
     if request.method == "POST":
         allowed = [
             "ai_engine", "openai_api_key", "openai_model", "gemini_api_key", "gemini_model",
-            "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "smtp_to", "smtp_security",
+            "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "smtp_to", "smtp_security", "email_subject_prefix",
             "amazon_credential_id", "amazon_secret", "amazon_partner_tag", "amazon_marketplace", "amazon_token_url", "amazon_api_base",
-            "publish_days", "publish_time", "timezone",
+            "publish_days", "publish_time", "timezone", "scheduler_enabled", "show_discover",
         ]
         values = {key: request.form.get(key, "").strip() for key in allowed}
+        values["scheduler_enabled"] = "1" if request.form.get("scheduler_enabled") else "0"
+        values["show_discover"] = "1" if request.form.get("show_discover") else "0"
         set_settings(values)
         configure_scheduler(get_settings(), publish_next)
         flash("Impostazioni salvate.", "success")
