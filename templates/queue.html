@@ -5,6 +5,9 @@
 {% for i in items %}
 <div class="queue-row">
   <div class="queue-pos">{{ i.position }}</div>
+  <div class="queue-thumb-wrap">
+    <img class="queue-thumb" data-preview-url="{{ url_for('article_edit', article_id=i.article_id) }}" alt="{{ i.product_title }}" hidden>
+  </div>
   <div class="grow"><strong>{{ i.title }}</strong><div class="muted">{{ i.product_title }}</div></div>
   <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='up') }}"><button class="icon">↑</button></form>
   <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='down') }}"><button class="icon">↓</button></form>
@@ -13,4 +16,22 @@
 </div>
 {% else %}<div class="empty">La coda è vuota.</div>{% endfor %}
 </div>
+<script>
+document.querySelectorAll('.queue-thumb').forEach(async (img) => {
+  try {
+    const response = await fetch(img.dataset.previewUrl, {credentials: 'same-origin'});
+    if (!response.ok) return;
+    const html = await response.text();
+    const match = html.match(/const image=([^;]+);/);
+    if (!match) return;
+    const src = JSON.parse(match[1]);
+    if (src) {
+      img.src = src;
+      img.hidden = false;
+    }
+  } catch (e) {
+    // Se l'immagine non è disponibile, la riga resta semplicemente senza miniatura.
+  }
+});
+</script>
 {% endblock %}
