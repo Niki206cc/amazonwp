@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><h1>Articoli pubblicati</h1><p>Storico degli articoli già inviati a Postie.</p></div></div>
+<div class="panel">
+{% for i in items %}
+<div class="queue-row">
+  <div class="queue-thumb-wrap">
+    {% if i.preview_image %}<img class="queue-thumb" src="{{ i.preview_image }}" alt="{{ i.product_title }}">{% endif %}
+  </div>
+  <div class="grow">
+    <strong>{{ i.title }}</strong>
+    <div class="muted">{{ i.product_title }}</div>
+    <div class="muted">Pubblicato: {{ i.published_at or i.updated_at }}</div>
+  </div>
+  <a class="btn small" href="{{ url_for('article_edit', article_id=i.article_id) }}">Apri</a>
+</div>
+{% else %}
+<div class="empty">Non ci sono ancora articoli pubblicati.</div>
+{% endfor %}
+</div>
+{% endblock %}
