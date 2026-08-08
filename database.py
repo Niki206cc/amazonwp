@@ -112,6 +112,20 @@ def get_settings():
 
 
 def set_settings(values):
+    values = dict(values)
+
+    # La route /settings delle versioni precedenti non includeva questi due
+    # campi nella whitelist. Se siamo nel salvataggio delle impostazioni,
+    # li recuperiamo direttamente dal form per mantenerli persistenti.
+    try:
+        from flask import has_request_context, request
+
+        if has_request_context() and request.endpoint == "settings_page" and request.method == "POST":
+            values["scheduler_enabled"] = "1" if request.form.get("scheduler_enabled") else "0"
+            values["email_subject_prefix"] = request.form.get("email_subject_prefix", "").strip()
+    except Exception:
+        pass
+
     with get_db() as db:
         for key, value in values.items():
             db.execute(
