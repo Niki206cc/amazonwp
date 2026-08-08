@@ -2,8 +2,14 @@
 {% block content %}
 <h1>Nuovo prodotto</h1>
 <form method="post" enctype="multipart/form-data" class="panel form-grid">
+  <label class="full">Link Amazon
+    <div style="display:flex;gap:10px;align-items:end">
+      <input name="amazon_url" value="{{ product.get('amazon_url','') }}" placeholder="Incolla qui il link del prodotto Amazon" style="flex:1">
+      <button class="btn" type="submit" name="action" value="fetch" formnovalidate>Recupera dati</button>
+    </div>
+    <small>Il sistema prova a recuperare automaticamente titolo, ASIN, prezzo, immagine, categoria e caratteristiche dalla pagina pubblica Amazon.</small>
+  </label>
   <label>Titolo<input name="title" value="{{ product.get('title','') }}" required></label>
-  <label>Link Amazon<input name="amazon_url" value="{{ product.get('amazon_url','') }}"></label>
   <label>ASIN<input name="asin" value="{{ product.get('asin','') }}"></label>
   <label>Prezzo<input name="price" value="{{ product.get('price','') }}"></label>
   <label>Categoria<input name="category" value="{{ product.get('category','') }}"></label>
@@ -11,6 +17,6 @@
   <label class="full">Oppure carica immagine<input type="file" name="image_file" accept="image/*"></label>
   <label class="full">Caratteristiche<textarea name="features" rows="6">{{ product.get('features','') }}</textarea></label>
   <label class="full">Note<textarea name="notes" rows="4">{{ product.get('notes','') }}</textarea></label>
-  <div class="full"><button class="btn" type="submit">Salva prodotto</button></div>
+  <div class="full"><button class="btn" type="submit" name="action" value="save">Salva prodotto</button></div>
 </form>
 {% endblock %}
