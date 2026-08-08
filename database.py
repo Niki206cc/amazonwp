@@ -101,6 +101,7 @@ def init_db():
             "publish_time": "09:00",
             "scheduler_enabled": "0",
             "email_subject_prefix": "",
+            "show_discover": "1",
         }
         for k, v in defaults.items():
             db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
@@ -114,15 +115,15 @@ def get_settings():
 def set_settings(values):
     values = dict(values)
 
-    # La route /settings delle versioni precedenti non includeva questi due
-    # campi nella whitelist. Se siamo nel salvataggio delle impostazioni,
-    # li recuperiamo direttamente dal form per mantenerli persistenti.
+    # Gestione dei checkbox e dei campi che nelle prime versioni non erano
+    # presenti nella whitelist della route /settings.
     try:
         from flask import has_request_context, request
 
         if has_request_context() and request.endpoint == "settings_page" and request.method == "POST":
             values["scheduler_enabled"] = "1" if request.form.get("scheduler_enabled") else "0"
             values["email_subject_prefix"] = request.form.get("email_subject_prefix", "").strip()
+            values["show_discover"] = "1" if request.form.get("show_discover") else "0"
     except Exception:
         pass
 
