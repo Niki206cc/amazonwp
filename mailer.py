@@ -18,8 +18,12 @@ def send_article(settings, article, image_path=None):
     msg["Subject"] = f"{prefix} {article['title']}".strip()
     msg["From"] = from_addr
     msg["To"] = to_addr
-    msg.set_content("Questo messaggio contiene una versione HTML dell'articolo.")
-    msg.add_alternative(article["html"], subtype="html")
+
+    # Postie deve trovare l'HTML come corpo principale del messaggio.
+    # Evitiamo il multipart/alternative con un fallback text/plain,
+    # perché alcune configurazioni di Postie pubblicano il primo blocco
+    # testuale invece della versione HTML.
+    msg.set_content(article["html"], subtype="html")
 
     if image_path and Path(image_path).exists():
         p = Path(image_path)
