@@ -397,10 +397,35 @@ def article_send_now(article_id):
         article = db.execute("SELECT a.*,p.local_image FROM articles a JOIN products p ON p.id=a.product_id WHERE a.id=?", (article_id,)).fetchone()
     try:
         send_article(get_settings(), dict(article), article["local_image"])
-        flash("Email inviata a Postie.", "success")
+        published_at = now()
+        with get_db() as db:
+            db.execute("UPDATE articles SET status='published',published_at=?,updated_at=? WHERE id=?", (published_at, published_at, article_id))
+            db.execute("DELETE FROM queue WHERE article_id=?", (article_id,))
+        normalize_queue()
+        flash("Email inviata a Postie e articolo spostato tra i pubblicati.", "success")
     except Exception as exc:
         flash(str(exc), "error")
     return redirect(url_for("article_edit", article_id=article_id))
+
+
+@app.route("/published")
+def published_page():
+    with get_db() as db:
+        rows = db.execute(
+            """SELECT a.id article_id,a.title,a.published_at,a.updated_at,p.title product_title,p.local_image,p.image_url
+               FROM articles a JOIN products p ON p.id=a.product_id
+               WHERE a.status='published'
+               ORDER BY COALESCE(a.published_at,a.updated_at) DESC,a.id DESC"""
+        ).fetchall()
+    items = []
+    for row in rows:
+        item = dict(row)
+        if item.get("local_image"):
+            item["preview_image"] = url_for("uploads", filename=Path(item["local_image"]).name)
+        else:
+            item["preview_image"] = item.get("image_url", "")
+        items.append(item)
+    return render_template("published.html", items=items)
 
 
 @app.route("/queue")
