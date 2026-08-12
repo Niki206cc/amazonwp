@@ -5,7 +5,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 
-POSTIE_CATEGORY = "Consigli per gli acquisti"
+DEFAULT_POSTIE_CATEGORY = "Consigli per gli acquisti"
 
 
 def send_article(settings, article, image_path=None):
@@ -18,8 +18,12 @@ def send_article(settings, article, image_path=None):
 
     msg = EmailMessage()
     prefix = settings.get("email_subject_prefix", "").strip()
-    parts = [f"[{POSTIE_CATEGORY}]"]
-    if prefix and prefix.lower() != f"[{POSTIE_CATEGORY}]".lower():
+    postie_category = (settings.get("postie_category") or DEFAULT_POSTIE_CATEGORY).strip()
+
+    parts = []
+    if postie_category:
+        parts.append(f"[{postie_category}]")
+    if prefix and prefix.lower() != f"[{postie_category}]".lower():
         parts.append(prefix)
     parts.append(article["title"])
     msg["Subject"] = " ".join(parts).strip()
