@@ -5,6 +5,9 @@ from email.message import EmailMessage
 from pathlib import Path
 
 
+POSTIE_CATEGORY = "Consigli per gli acquisti"
+
+
 def send_article(settings, article, image_path=None):
     host = settings.get("smtp_host", "").strip()
     to_addr = settings.get("smtp_to", "").strip()
@@ -15,14 +18,15 @@ def send_article(settings, article, image_path=None):
 
     msg = EmailMessage()
     prefix = settings.get("email_subject_prefix", "").strip()
-    msg["Subject"] = f"{prefix} {article['title']}".strip()
+    parts = [f"[{POSTIE_CATEGORY}]"]
+    if prefix and prefix.lower() != f"[{POSTIE_CATEGORY}]".lower():
+        parts.append(prefix)
+    parts.append(article["title"])
+    msg["Subject"] = " ".join(parts).strip()
     msg["From"] = from_addr
     msg["To"] = to_addr
 
-    # Postie deve trovare l'HTML come corpo principale del messaggio.
-    # Evitiamo il multipart/alternative con un fallback text/plain,
-    # perché alcune configurazioni di Postie pubblicano il primo blocco
-    # testuale invece della versione HTML.
+    # Postie è configurato per usare la versione HTML degli articoli Amazon.
     msg.set_content(article["html"], subtype="html")
 
     if image_path and Path(image_path).exists():
@@ -45,8 +49,6 @@ def send_article(settings, article, image_path=None):
     user = settings.get("smtp_user", "").strip()
     password = settings.get("smtp_password", "")
 
-    # La porta 465 usa SSL/TLS implicito. Se in configurazione è rimasto
-    # STARTTLS per errore, forziamo comunque SSL per evitare timeout.
     if port == 465:
         security = "ssl"
 
@@ -56,28 +58,18 @@ def send_article(settings, article, image_path=None):
 
     try:
         if security == "ssl":
-            server = smtplib.SMTP_SSL(
-                host,
-                port,
-                timeout=timeout,
-                context=context,
-            )
+            server = smtplib.SMTP_SSL(host, port, timeout=timeout, context=context)
             server.ehlo()
-
         elif security == "starttls":
             server = smtplib.SMTP(host, port, timeout=timeout)
             server.ehlo()
             server.starttls(context=context)
             server.ehlo()
-
         elif security == "none":
             server = smtplib.SMTP(host, port, timeout=timeout)
             server.ehlo()
-
         else:
-            raise RuntimeError(
-                f"Modalità di sicurezza SMTP non valida: {security}"
-            )
+            raise RuntimeError(f"Modalità di sicurezza SMTP non valida: {security}")
 
         if user:
             server.login(user, password)
@@ -88,20 +80,14 @@ def send_article(settings, article, image_path=None):
         raise RuntimeError(
             f"Autenticazione SMTP fallita: {exc.smtp_code} {exc.smtp_error.decode(errors='ignore') if isinstance(exc.smtp_error, bytes) else exc.smtp_error}"
         ) from exc
-
     except smtplib.SMTPConnectError as exc:
-        raise RuntimeError(
-            f"Connessione SMTP fallita: {exc.smtp_code} {exc.smtp_error}"
-        ) from exc
-
+        raise RuntimeError(f"Connessione SMTP fallita: {exc.smtp_code} {exc.smtp_error}") from exc
     except (TimeoutError, OSError) as exc:
         raise RuntimeError(
             f"Connessione SMTP non riuscita verso {host}:{port} ({security}): {exc}"
         ) from exc
-
     except smtplib.SMTPException as exc:
         raise RuntimeError(f"Errore SMTP: {exc}") from exc
-
     finally:
         if server is not None:
             try:
