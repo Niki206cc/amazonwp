@@ -12,6 +12,8 @@ from ai import generate_article
 from amazon import extract_asin, search_products
 from mailer import send_article
 from scheduler import configure_scheduler, start_scheduler
+from quality import validate_article
+from planning import next_publish_slots, are_similar_products
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -20,7 +22,19 @@ app.secret_key = SECRET_KEY
 @app.context_processor
 def inject_ui_settings():
     settings = get_settings()
-    return {"ui_show_discover": settings.get("show_discover", "1") == "1"}
+    try:
+        with get_db() as db:
+            counts = {
+                "drafts": db.execute("SELECT COUNT(*) c FROM articles WHERE status='draft'").fetchone()["c"],
+                "queued": db.execute("SELECT COUNT(*) c FROM queue").fetchone()["c"],
+                "published": db.execute("SELECT COUNT(*) c FROM articles WHERE status='published'").fetchone()["c"],
+            }
+    except Exception:
+        counts = {"drafts": 0, "queued": 0, "published": 0}
+    return {
+        "ui_show_discover": settings.get("show_discover", "1") == "1",
+        "ui_counts": counts,
+    }
 
 
 def affiliate_url(url, asin="", partner_tag=""):
@@ -185,17 +199,34 @@ def publish_next():
     with app.app_context():
         with get_db() as db:
             item = db.execute(
-                """SELECT q.id qid,a.*,p.local_image,p.image_url
+                """SELECT q.id qid,a.*,p.local_image,p.image_url,p.price product_price,p.category
                    FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id
                    ORDER BY q.position ASC LIMIT 1"""
             ).fetchone()
         if not item:
             log("Scheduler: coda vuota")
             return
-        try:
-            send_article(get_settings(), dict(item), item["local_image"])
+
+        settings = get_settings()
+        quality_errors = validate_article(
+            settings,
+            dict(item),
+            item["local_image"],
+            item["image_url"],
+            item["product_price"],
+        )
+        if quality_errors:
+            message = "Controllo pre-pubblicazione: " + "; ".join(quality_errors)
             with get_db() as db:
-                db.execute("UPDATE articles SET status='published',published_at=?,updated_at=? WHERE id=?", (now(), now(), item["id"]))
+                db.execute("UPDATE articles SET error=?,updated_at=? WHERE id=?", (message, now(), item["id"]))
+            log(f"Pubblicazione bloccata per '{item['title']}': {message}", "ERROR")
+            return
+
+        try:
+            send_article(settings, dict(item), item["local_image"])
+            published_at = now()
+            with get_db() as db:
+                db.execute("UPDATE articles SET status='published',published_at=?,error='',updated_at=? WHERE id=?", (published_at, published_at, item["id"]))
                 db.execute("DELETE FROM queue WHERE id=?", (item["qid"],))
             normalize_queue()
             log(f"Articolo pubblicato: {item['title']}")
@@ -394,16 +425,41 @@ def article_approve(article_id):
 @app.post("/article/<int:article_id>/send-now")
 def article_send_now(article_id):
     with get_db() as db:
-        article = db.execute("SELECT a.*,p.local_image FROM articles a JOIN products p ON p.id=a.product_id WHERE a.id=?", (article_id,)).fetchone()
+        article = db.execute(
+            """SELECT a.*,p.local_image,p.image_url,p.price product_price
+               FROM articles a JOIN products p ON p.id=a.product_id WHERE a.id=?""",
+            (article_id,),
+        ).fetchone()
+    if not article:
+        flash("Articolo non trovato.", "error")
+        return redirect(url_for("index"))
+
+    settings = get_settings()
+    quality_errors = validate_article(
+        settings,
+        dict(article),
+        article["local_image"],
+        article["image_url"],
+        article["product_price"],
+    )
+    if quality_errors:
+        message = "Controllo pre-pubblicazione: " + "; ".join(quality_errors)
+        with get_db() as db:
+            db.execute("UPDATE articles SET error=?,updated_at=? WHERE id=?", (message, now(), article_id))
+        flash(message, "error")
+        return redirect(url_for("article_edit", article_id=article_id))
+
     try:
-        send_article(get_settings(), dict(article), article["local_image"])
+        send_article(settings, dict(article), article["local_image"])
         published_at = now()
         with get_db() as db:
-            db.execute("UPDATE articles SET status='published',published_at=?,updated_at=? WHERE id=?", (published_at, published_at, article_id))
+            db.execute("UPDATE articles SET status='published',published_at=?,error='',updated_at=? WHERE id=?", (published_at, published_at, article_id))
             db.execute("DELETE FROM queue WHERE article_id=?", (article_id,))
         normalize_queue()
         flash("Email inviata a Postie e articolo spostato tra i pubblicati.", "success")
     except Exception as exc:
+        with get_db() as db:
+            db.execute("UPDATE articles SET error=?,updated_at=? WHERE id=?", (str(exc), now(), article_id))
         flash(str(exc), "error")
     return redirect(url_for("article_edit", article_id=article_id))
 
@@ -430,12 +486,26 @@ def published_page():
 
 @app.route("/queue")
 def queue_page():
+    settings = get_settings()
     with get_db() as db:
-        items = db.execute(
-            """SELECT q.id qid,q.position,a.id article_id,a.title,a.status,p.title product_title,p.local_image,p.image_url
-               FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id ORDER BY q.position"""
+        rows = db.execute(
+            """SELECT q.id qid,q.position,a.id article_id,a.title,a.status,a.error,
+                      p.title product_title,p.local_image,p.image_url,p.category
+               FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id
+               ORDER BY q.position"""
         ).fetchall()
-    return render_template("queue.html", items=items)
+
+    items = [dict(row) for row in rows]
+    slots = next_publish_slots(settings, len(items))
+    for index, item in enumerate(items):
+        item["scheduled_at"] = slots[index].strftime("%d/%m/%Y %H:%M") if index < len(slots) else ""
+        item["similar_warning"] = index > 0 and are_similar_products(items[index - 1], item)
+
+    return render_template(
+        "queue.html",
+        items=items,
+        scheduler_enabled=settings.get("scheduler_enabled") == "1",
+    )
 
 
 @app.post("/queue/<int:qid>/<direction>")
@@ -516,7 +586,7 @@ def settings_page():
     if request.method == "POST":
         allowed = [
             "ai_engine", "openai_api_key", "openai_model", "gemini_api_key", "gemini_model",
-            "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "smtp_to", "smtp_security", "email_subject_prefix",
+            "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "smtp_to", "smtp_security", "email_subject_prefix", "postie_category",
             "amazon_credential_id", "amazon_secret", "amazon_partner_tag", "amazon_marketplace", "amazon_token_url", "amazon_api_base",
             "publish_days", "publish_time", "timezone", "scheduler_enabled", "show_discover",
         ]
