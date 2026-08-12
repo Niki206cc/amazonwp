@@ -9,13 +9,14 @@
 <body>
 <header class="topbar">
   <div>
-    <div class="brand">Amazon Articoli MP <span style="font-size:12px;opacity:.7;font-weight:400">v1.1.12</span></div>
-    <div style="font-size:12px;opacity:.75;margin-top:3px">Bozze: {{ ui_counts.drafts }} · In coda: {{ ui_counts.queued }} · Pubblicati: {{ ui_counts.published }}</div>
+    <div class="brand">Amazon Articoli MP <span style="font-size:12px;opacity:.7;font-weight:400">v1.1.13</span></div>
+    <div style="font-size:12px;opacity:.75;margin-top:3px"><a href="{{ url_for('drafts_page') }}" style="color:inherit;text-decoration:underline">Bozze: {{ ui_counts.drafts }}</a> · <a href="{{ url_for('queue_page') }}" style="color:inherit;text-decoration:underline">In coda: {{ ui_counts.queued }}</a> · <a href="{{ url_for('published_page') }}" style="color:inherit;text-decoration:underline">Pubblicati: {{ ui_counts.published }}</a></div>
   </div>
   <nav>
     <a href="{{ url_for('index') }}">Prodotti</a>
     <a href="{{ url_for('product_new') }}">Nuovo prodotto</a>
     {% if ui_show_discover %}<a href="{{ url_for('discover') }}">Scopri prodotti</a>{% endif %}
+    <a href="{{ url_for('drafts_page') }}">Bozze</a>
     <a href="{{ url_for('queue_page') }}">Coda</a>
     <a href="{{ url_for('published_page') }}">Pubblicati</a>
     <a href="{{ url_for('settings_page') }}">Impostazioni</a>
@@ -23,9 +24,7 @@
 </header>
 <main class="container">
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      <div class="flash {{ category }}">{{ message }}</div>
-    {% endfor %}
+    {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
