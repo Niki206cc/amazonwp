@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><h1>Bozze</h1><p>Articoli generati che non sono ancora stati approvati e messi in coda.</p></div></div>
+<div class="panel">
+{% for i in items %}
+<div class="queue-row">
+  <div class="queue-thumb-wrap">
+    {% if i.preview_image %}<img class="queue-thumb" src="{{ i.preview_image }}" alt="{{ i.product_title }}">{% endif %}
+  </div>
+  <div class="grow">
+    <strong>{{ i.title }}</strong>
+    <div class="muted">{{ i.product_title }}</div>
+    <div class="muted">Creata: {{ i.created_at or '—' }}</div>
+  </div>
+  <a class="btn small" href="{{ url_for('article_edit', article_id=i.article_id) }}">Apri</a>
+  <form method="post" action="{{ url_for('article_delete', article_id=i.article_id) }}" onsubmit="return confirm('Eliminare questa bozza?');"><button class="btn small danger" type="submit">Elimina</button></form>
+</div>
+{% else %}<div class="empty">Non ci sono articoli in bozza.</div>{% endfor %}
+</div>
+{% endblock %}
