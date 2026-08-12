@@ -4,106 +4,29 @@
 <form method="post" id="settings-form">
 <section class="panel"><h2>AI</h2><div class="form-grid">
 <label>Motore<select name="ai_engine"><option value="openai" {% if settings.ai_engine=='openai' %}selected{% endif %}>OpenAI</option><option value="gemini" {% if settings.ai_engine=='gemini' %}selected{% endif %}>Gemini</option></select></label>
-<label>Modello OpenAI<input name="openai_model" value="{{ settings.openai_model }}"></label>
-<label class="full">OpenAI API key<input type="password" name="openai_api_key" value="{{ settings.openai_api_key }}"></label>
-<label>Modello Gemini<input name="gemini_model" value="{{ settings.gemini_model }}"></label>
-<label class="full">Gemini API key<input type="password" name="gemini_api_key" value="{{ settings.gemini_api_key }}"></label>
+<label>Modello OpenAI<input name="openai_model" value="{{ settings.openai_model }}"></label><label class="full">OpenAI API key<input type="password" name="openai_api_key" value="{{ settings.openai_api_key }}"></label>
+<label>Modello Gemini<input name="gemini_model" value="{{ settings.gemini_model }}"></label><label class="full">Gemini API key<input type="password" name="gemini_api_key" value="{{ settings.gemini_api_key }}"></label>
 </div></section>
 <section class="panel"><h2>SMTP / Postie</h2><div class="form-grid">
-<label>Host<input name="smtp_host" value="{{ settings.smtp_host }}"></label><label>Porta<input name="smtp_port" value="{{ settings.smtp_port }}"></label>
-<label>Utente<input name="smtp_user" value="{{ settings.smtp_user }}"></label><label>Password<input type="password" name="smtp_password" value="{{ settings.smtp_password }}"></label>
-<label>Mittente<input name="smtp_from" value="{{ settings.smtp_from }}"></label><label>Destinatario Postie<input name="smtp_to" value="{{ settings.smtp_to }}"></label>
+<label>Host<input name="smtp_host" value="{{ settings.smtp_host }}"></label><label>Porta<input name="smtp_port" value="{{ settings.smtp_port }}"></label><label>Utente<input name="smtp_user" value="{{ settings.smtp_user }}"></label><label>Password<input type="password" name="smtp_password" value="{{ settings.smtp_password }}"></label><label>Mittente<input name="smtp_from" value="{{ settings.smtp_from }}"></label><label>Destinatario Postie<input name="smtp_to" value="{{ settings.smtp_to }}"></label>
 <label>Sicurezza<select name="smtp_security"><option value="ssl" {% if settings.smtp_security=='ssl' %}selected{% endif %}>SSL/TLS implicito (porta 465)</option><option value="starttls" {% if settings.smtp_security=='starttls' %}selected{% endif %}>STARTTLS (porta 587)</option><option value="none" {% if settings.smtp_security=='none' %}selected{% endif %}>Nessuna</option></select><small>Con porta 465 il programma forza automaticamente SSL/TLS.</small></label>
-<label>Prefisso oggetto<input name="email_subject_prefix" value="{{ settings.email_subject_prefix }}" placeholder="facoltativo"></label>
-<label class="full">Categoria WordPress / Postie<input name="postie_category" value="{{ settings.get('postie_category','Consigli per gli acquisti') }}" placeholder="Consigli per gli acquisti"><small>Verrà inserita tra parentesi quadre nell'oggetto, ad esempio [Consigli per gli acquisti].</small></label>
+<label>Prefisso oggetto<input name="email_subject_prefix" value="{{ settings.email_subject_prefix }}" placeholder="facoltativo"></label><label class="full">Categoria WordPress / Postie<input name="postie_category" value="{{ settings.get('postie_category','Consigli per gli acquisti') }}"><small>Verrà inserita tra parentesi quadre nell'oggetto.</small></label>
 </div></section>
-<section class="panel"><h2>Amazon Creators API</h2><div class="form-grid">
-<label>Credential ID<input name="amazon_credential_id" value="{{ settings.amazon_credential_id }}"></label><label>Secret<input type="password" name="amazon_secret" value="{{ settings.amazon_secret }}"></label>
-<label>Partner Tag<input name="amazon_partner_tag" value="{{ settings.amazon_partner_tag }}"></label><label>Marketplace<input name="amazon_marketplace" value="{{ settings.amazon_marketplace }}"></label>
-<label class="full">Token URL<input name="amazon_token_url" value="{{ settings.amazon_token_url }}"></label><label class="full">API base URL<input name="amazon_api_base" value="{{ settings.amazon_api_base }}"></label>
-<label class="check full"><input type="checkbox" name="show_discover" value="1" {% if settings.get('show_discover','1')=='1' %}checked{% endif %}> Mostra “Scopri prodotti” nel menu</label>
-<small class="full">Puoi nasconderlo finché il tuo account Amazon non soddisfa i requisiti per la Creators API. La funzione resta disponibile e può essere riattivata in qualsiasi momento.</small>
-</div></section>
-<section class="panel"><h2>Pubblicazione automatica</h2><div class="form-grid">
-<label>Giorni APScheduler<input name="publish_days" value="{{ settings.publish_days }}"><small>0=lun, 1=mar ... 6=dom. Esempio tutti i giorni: 0,1,2,3,4,5,6</small></label>
-<div class="full">
-  <label>Orari di pubblicazione</label>
-  <input type="hidden" name="publish_time" id="publish_time" value="{{ settings.publish_time or '09:00' }}">
-  <div id="publish-times" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
-  <button type="button" class="btn small" id="add-publish-time" style="margin-top:10px">+ Aggiungi orario</button>
-  <small style="display:block;margin-top:8px">A ogni orario selezionato viene inviato il primo articolo disponibile in coda. Esempio: 09:00, 13:00 e 18:30 = fino a tre articoli nello stesso giorno.</small>
-</div>
-<label class="check full"><input type="checkbox" name="scheduler_enabled" value="1" {% if settings.scheduler_enabled=='1' %}checked{% endif %}> Abilita pubblicazione automatica</label>
-<small class="full">Prima di ogni invio il sistema controlla titolo, lunghezza del testo, immagine, prezzo quando disponibile, link affiliati, Partner Tag e dichiarazione di affiliazione. Se manca qualcosa, l'articolo resta in coda e viene segnalato il problema.</small>
-</div></section>
-<button class="btn success" type="submit">Salva impostazioni</button>
-</form>
-<section class="panel" style="margin-top:24px">
-  <h2>Cronologia versioni</h2>
-  <p><strong>v1.1.12</strong> — Aggiunto controllo qualità prima dell'invio, orario previsto per ogni elemento della coda, categoria Postie configurabile, contatori Bozze/Coda/Pubblicati e avviso per prodotti simili consecutivi.</p>
-  <p><strong>v1.1.11</strong> — Aggiunta categoria Postie automatica “Consigli per gli acquisti” nell’oggetto delle email e supporto a più pubblicazioni automatiche nello stesso giorno con orari configurabili.</p>
-  <p><strong>v1.1.10</strong> — Aggiunta la sezione “Pubblicati” con storico degli articoli già inviati a Postie, data di pubblicazione, prodotto e pulsante Apri. Anche l’invio manuale sposta ora l’articolo tra i pubblicati e lo rimuove dalla coda.</p>
-  <p><strong>v1.1.9</strong> — Corretto l’invio a Postie: il corpo dell’email viene ora inviato direttamente come HTML, evitando che WordPress pubblichi il testo di fallback al posto dell’articolo.</p>
-  <p><strong>v1.1.8</strong> — Aggiunto “Incolla link Amazon → Recupera dati” per compilare automaticamente la scheda prodotto senza Creators API; aggiunta opzione per mostrare o nascondere “Scopri prodotti” nel menu.</p>
-  <p><strong>v1.1.7</strong> — Corretto il salvataggio della pubblicazione automatica: il checkbox resta attivo dopo il salvataggio e lo scheduler viene configurato correttamente. Corretto anche il salvataggio del prefisso oggetto email.</p>
-  <p><strong>v1.1.6</strong> — Il prezzo del prodotto viene sempre citato quando disponibile; inseriti 2-3 richiami affiliati nel testo con controllo automatico fino ad almeno 3 link Amazon.</p>
-  <p><strong>v1.1.5</strong> — Aggiunte miniature dei prodotti accanto alla posizione nella coda di pubblicazione.</p>
-  <p><strong>v1.1.4</strong> — Corretto errore 500 nella pagina Coda causato da un riferimento a una rotta Flask inesistente.</p>
-  <p><strong>v1.1.3</strong> — Titolo articolo generato in stile editoriale italiano, niente Title Case inglese e un solo Titolo Facebook dedicato.</p>
-  <p><strong>v1.1.2</strong> — Link Amazon normalizzati automaticamente nel formato canonico <code>https://www.amazon.it/dp/ASIN?tag=PARTNER-TAG</code>; aggiunta cronologia versioni visibile.</p>
-  <p><strong>v1.1.1</strong> — Gestione SMTP migliorata per SSL/TLS implicito su porta 465 e STARTTLS su porta 587.</p>
-  <p><strong>v1.1.0</strong> — Pulsante Elimina nella pagina principale prodotti e versione applicazione visibile.</p>
-  <p><strong>v1.0.x</strong> — Anteprima immagine, referral Amazon automatico, eliminazione articoli e prime correzioni Creators API.</p>
+<section class="panel"><h2>Amazon Creators API</h2><div class="form-grid"><label>Credential ID<input name="amazon_credential_id" value="{{ settings.amazon_credential_id }}"></label><label>Secret<input type="password" name="amazon_secret" value="{{ settings.amazon_secret }}"></label><label>Partner Tag<input name="amazon_partner_tag" value="{{ settings.amazon_partner_tag }}"></label><label>Marketplace<input name="amazon_marketplace" value="{{ settings.amazon_marketplace }}"></label><label class="full">Token URL<input name="amazon_token_url" value="{{ settings.amazon_token_url }}"></label><label class="full">API base URL<input name="amazon_api_base" value="{{ settings.amazon_api_base }}"></label><label class="check full"><input type="checkbox" name="show_discover" value="1" {% if settings.get('show_discover','1')=='1' %}checked{% endif %}> Mostra “Scopri prodotti” nel menu</label></div></section>
+<section class="panel"><h2>Pubblicazione automatica</h2><div class="form-grid"><label>Giorni APScheduler<input name="publish_days" value="{{ settings.publish_days }}"><small>0=lun, 1=mar ... 6=dom.</small></label><div class="full"><label>Orari di pubblicazione</label><input type="hidden" name="publish_time" id="publish_time" value="{{ settings.publish_time or '09:00' }}"><div id="publish-times" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div><button type="button" class="btn small" id="add-publish-time" style="margin-top:10px">+ Aggiungi orario</button></div><label class="check full"><input type="checkbox" name="scheduler_enabled" value="1" {% if settings.scheduler_enabled=='1' %}checked{% endif %}> Abilita pubblicazione automatica</label></div></section>
+<button class="btn success" type="submit">Salva impostazioni</button></form>
+<section class="panel" style="margin-top:24px"><h2>Cronologia versioni</h2>
+<p><strong>v1.1.13</strong> — Aggiunta sezione Bozze con miniature, data di creazione, Apri ed Elimina; i contatori Bozze, Coda e Pubblicati sono ora cliccabili.</p>
+<p><strong>v1.1.12</strong> — Controllo qualità pre-invio, orario previsto in coda, categoria Postie configurabile, contatori e avviso prodotti simili.</p>
+<p><strong>v1.1.11</strong> — Categoria Postie automatica e più orari di pubblicazione giornalieri.</p>
+<p><strong>v1.1.10</strong> — Sezione Pubblicati con storico.</p>
+<p><strong>v1.1.9</strong> — Corretto invio HTML a Postie.</p>
+<p><strong>v1.1.8</strong> — Importazione da link Amazon e opzione Scopri prodotti.</p>
+<p><strong>v1.1.7</strong> — Corretto salvataggio scheduler e prefisso email.</p>
+<p><strong>v1.1.6</strong> — Prezzo e richiami affiliati multipli.</p>
+<p><strong>v1.1.5</strong> — Miniature nella coda.</p>
+<p><strong>v1.1.4</strong> — Corretto errore pagina Coda.</p>
+<p><strong>v1.1.3</strong> — Titoli editoriali italiani e Titolo Facebook.</p>
 </section>
-<script>
-(function () {
-  const hidden = document.getElementById('publish_time');
-  const container = document.getElementById('publish-times');
-  const addButton = document.getElementById('add-publish-time');
-  const form = document.getElementById('settings-form');
-
-  function addTime(value) {
-    const wrap = document.createElement('div');
-    wrap.style.display = 'flex';
-    wrap.style.gap = '6px';
-    wrap.style.alignItems = 'center';
-
-    const input = document.createElement('input');
-    input.type = 'time';
-    input.className = 'publish-time-input';
-    input.value = value || '09:00';
-    input.required = true;
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'btn small danger';
-    remove.textContent = 'Rimuovi';
-    remove.addEventListener('click', function () {
-      if (container.querySelectorAll('.publish-time-input').length > 1) {
-        wrap.remove();
-      }
-    });
-
-    wrap.appendChild(input);
-    wrap.appendChild(remove);
-    container.appendChild(wrap);
-  }
-
-  const initial = (hidden.value || '09:00').split(',').map(v => v.trim()).filter(Boolean);
-  (initial.length ? initial : ['09:00']).forEach(addTime);
-
-  addButton.addEventListener('click', function () {
-    addTime('12:00');
-  });
-
-  form.addEventListener('submit', function () {
-    const times = Array.from(container.querySelectorAll('.publish-time-input'))
-      .map(input => input.value)
-      .filter(Boolean)
-      .filter((value, index, array) => array.indexOf(value) === index)
-      .sort();
-    hidden.value = times.join(',');
-  });
-})();
-</script>
+<script>(function(){const hidden=document.getElementById('publish_time'),container=document.getElementById('publish-times'),addButton=document.getElementById('add-publish-time'),form=document.getElementById('settings-form');function addTime(value){const wrap=document.createElement('div');wrap.style.display='flex';wrap.style.gap='6px';const input=document.createElement('input');input.type='time';input.className='publish-time-input';input.value=value||'09:00';input.required=true;const remove=document.createElement('button');remove.type='button';remove.className='btn small danger';remove.textContent='Rimuovi';remove.onclick=()=>{if(container.querySelectorAll('.publish-time-input').length>1)wrap.remove()};wrap.append(input,remove);container.appendChild(wrap)};(hidden.value||'09:00').split(',').map(v=>v.trim()).filter(Boolean).forEach(addTime);addButton.onclick=()=>addTime('12:00');form.addEventListener('submit',()=>{hidden.value=Array.from(container.querySelectorAll('.publish-time-input')).map(i=>i.value).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).sort().join(',')})})();</script>
 {% endblock %}
