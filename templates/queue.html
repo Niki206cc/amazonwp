@@ -3,8 +3,8 @@
 <div class="page-head">
   <div>
     <h1>Coda pubblicazione</h1>
-    <p>Il primo articolo verrà inviato per primo a Postie.</p>
-    {% if not scheduler_enabled %}<p class="muted"><strong>Pubblicazione automatica disattivata.</strong> Gli orari previsti non vengono calcolati.</p>{% endif %}
+    <p>Gli articoli programmati manualmente non verranno pubblicati prima della data scelta.</p>
+    {% if not scheduler_enabled %}<p class="muted"><strong>Pubblicazione automatica disattivata.</strong> Gli articoli programmati resteranno in coda finché non riattivi lo scheduler o li invii manualmente.</p>{% endif %}
   </div>
 </div>
 <div class="panel">
@@ -17,7 +17,11 @@
   <div class="grow">
     <strong>{{ i.title }}</strong>
     <div class="muted">{{ i.product_title }}</div>
-    {% if i.scheduled_at %}<div style="font-size:13px;margin-top:4px"><strong>Pubblicazione prevista:</strong> {{ i.scheduled_at }}</div>{% endif %}
+    {% if i.manual_scheduled_date %}
+      <div style="font-size:13px;margin-top:4px"><strong>Programmato manualmente:</strong> {{ i.manual_scheduled_date }} · prima fascia utile</div>
+    {% elif i.scheduled_at %}
+      <div style="font-size:13px;margin-top:4px"><strong>Pubblicazione prevista:</strong> {{ i.scheduled_at }}</div>
+    {% endif %}
     {% if i.similar_warning %}<div style="font-size:13px;margin-top:4px;color:#a66400"><strong>Attenzione:</strong> prodotto simile a quello precedente in coda.</div>{% endif %}
     {% if i.error %}<div style="font-size:13px;margin-top:4px;color:#b42318"><strong>Ultimo problema:</strong> {{ i.error }}</div>{% endif %}
   </div>
