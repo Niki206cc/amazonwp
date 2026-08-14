@@ -88,6 +88,12 @@ def init_db():
             "openai_api_key": "",
             "openai_model": "gpt-5-mini",
             "gemini_api_key": "",
+            "gemini_api_key_2": "",
+            "gemini_api_key_3": "",
+            "gemini_api_key_4": "",
+            "gemini_api_key_5": "",
+            "gemini_active_key": "1",
+            "gemini_key_mode": "manual",
             "gemini_model": "gemini-2.5-flash",
             "smtp_host": "",
             "smtp_port": "587",
@@ -120,8 +126,6 @@ def get_settings():
 def set_settings(values):
     values = dict(values)
 
-    # Gestione dei checkbox e dei campi che nelle prime versioni non erano
-    # presenti nella whitelist della route /settings.
     try:
         from flask import has_request_context, request
 
@@ -129,6 +133,8 @@ def set_settings(values):
             values["scheduler_enabled"] = "1" if request.form.get("scheduler_enabled") else "0"
             values["email_subject_prefix"] = request.form.get("email_subject_prefix", "").strip()
             values["show_discover"] = "1" if request.form.get("show_discover") else "0"
+            for key in ("gemini_api_key_2", "gemini_api_key_3", "gemini_api_key_4", "gemini_api_key_5", "gemini_active_key", "gemini_key_mode"):
+                values[key] = request.form.get(key, "").strip()
     except Exception:
         pass
 

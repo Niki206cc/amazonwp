@@ -145,22 +145,65 @@ def generate_openai(settings, product, opportunity=None):
     return _extract_json(text)
 
 
-def generate_gemini(settings, product, opportunity=None):
-    key = settings.get("gemini_api_key", "").strip()
-    if not key:
-        raise RuntimeError("API key Gemini non configurata")
-    model = settings.get("gemini_model") or "gemini-2.5-flash"
+def _gemini_keys(settings):
+    keys = [
+        settings.get("gemini_api_key", ""),
+        settings.get("gemini_api_key_2", ""),
+        settings.get("gemini_api_key_3", ""),
+        settings.get("gemini_api_key_4", ""),
+        settings.get("gemini_api_key_5", ""),
+    ]
+    return [str(k or "").strip() for k in keys]
+
+
+def _gemini_key_order(settings):
+    keys = _gemini_keys(settings)
+    try:
+        active = max(1, min(int(settings.get("gemini_active_key") or 1), 5)) - 1
+    except Exception:
+        active = 0
+    mode = (settings.get("gemini_key_mode") or "manual").strip().lower()
+    if mode != "auto":
+        return [(active, keys[active])] if keys[active] else []
+
+    order = [active] + [i for i in range(5) if i != active]
+    return [(i, keys[i]) for i in order if keys[i]]
+
+
+def _generate_gemini_with_key(key, model, prompt):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     payload = {
-        "contents": [{"parts": [{"text": build_prompt(product, opportunity)}]}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseMimeType": "application/json"},
     }
-    r = requests.post(url, json=payload, timeout=90)
-    if not r.ok:
-        raise RuntimeError(f"Gemini: HTTP {r.status_code} - {r.text[:500]}")
-    data = r.json()
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
-    return _extract_json(text)
+    return requests.post(url, json=payload, timeout=90)
+
+
+def generate_gemini(settings, product, opportunity=None):
+    candidates = _gemini_key_order(settings)
+    if not candidates:
+        raise RuntimeError("API key Gemini non configurata nello slot selezionato")
+
+    model = settings.get("gemini_model") or "gemini-2.5-flash"
+    prompt = build_prompt(product, opportunity)
+    mode = (settings.get("gemini_key_mode") or "manual").strip().lower()
+    errors = []
+
+    for index, key in candidates:
+        r = _generate_gemini_with_key(key, model, prompt)
+        if r.ok:
+            data = r.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            result = _extract_json(text)
+            result["gemini_key_slot"] = index + 1
+            return result
+
+        error_text = r.text[:500]
+        errors.append(f"slot {index + 1}: HTTP {r.status_code} - {error_text}")
+        if mode != "auto" or r.status_code != 429:
+            raise RuntimeError(f"Gemini: HTTP {r.status_code} - {error_text}")
+
+    raise RuntimeError("Gemini: tutte le chiavi configurate hanno restituito quota/rate limit 429. " + " | ".join(errors))
 
 
 def generate_article(settings, product, opportunity=None):

@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta
 
 import requests
 
+from ai import _gemini_key_order
+
 
 RADAR_RULES = """Sei il radar editoriale-commerciale di Montagne & Paesi.
 Devi cercare sul web eventi REALI e FUTURI e trasformarli in opportunità editoriali con prodotti Amazon utili e pertinenti.
@@ -124,25 +126,31 @@ def _call_openai(settings, prompt):
 
 
 def _call_gemini(settings, prompt):
-    key = settings.get("gemini_api_key", "").strip()
-    if not key:
-        raise RuntimeError("API key Gemini non configurata")
+    candidates = _gemini_key_order(settings)
+    if not candidates:
+        raise RuntimeError("API key Gemini non configurata nello slot selezionato")
     model = settings.get("gemini_model") or "gemini-2.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}],
     }
-    r = requests.post(url, json=payload, timeout=180)
-    if not r.ok:
-        raise RuntimeError(f"Gemini Radar Google Search: HTTP {r.status_code} - {r.text[:800]}")
-    data = r.json()
-    candidates = data.get("candidates") or []
-    if not candidates:
-        raise RuntimeError("Gemini Radar non ha restituito risultati")
-    parts = candidates[0].get("content", {}).get("parts", [])
-    text = "\n".join(p.get("text", "") for p in parts if p.get("text"))
-    return _extract_json(text)
+    mode = (settings.get("gemini_key_mode") or "manual").strip().lower()
+    errors = []
+    for index, key in candidates:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        r = requests.post(url, json=payload, timeout=180)
+        if r.ok:
+            data = r.json()
+            candidates_out = data.get("candidates") or []
+            if not candidates_out:
+                raise RuntimeError("Gemini Radar non ha restituito risultati")
+            parts = candidates_out[0].get("content", {}).get("parts", [])
+            text = "\n".join(p.get("text", "") for p in parts if p.get("text"))
+            return _extract_json(text)
+        errors.append(f"slot {index + 1}: HTTP {r.status_code} - {r.text[:500]}")
+        if mode != "auto" or r.status_code != 429:
+            raise RuntimeError(f"Gemini Radar Google Search: HTTP {r.status_code} - {r.text[:800]}")
+    raise RuntimeError("Gemini Radar: tutte le chiavi configurate hanno restituito quota/rate limit 429. " + " | ".join(errors))
 
 
 def _parse_date(value):
