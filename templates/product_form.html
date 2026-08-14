@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Nuovo prodotto</h1>
-<form method="post" enctype="multipart/form-data" class="panel form-grid">
+<form method="post" enctype="multipart/form-data" class="panel form-grid" id="product-form">
   <label class="full">Link Amazon
     <div style="display:flex;gap:10px;align-items:end">
-      <input name="amazon_url" value="{{ product.get('amazon_url','') }}" placeholder="Incolla qui il link del prodotto Amazon" style="flex:1">
+      <input id="amazon-url" name="amazon_url" value="{{ product.get('amazon_url','') }}" placeholder="Incolla qui il link del prodotto Amazon" style="flex:1">
       <button class="btn" type="submit" name="action" value="fetch" formnovalidate>Recupera dati</button>
     </div>
     <small>Il sistema prova a recuperare automaticamente titolo, ASIN, prezzo, immagine, categoria e caratteristiche dalla pagina pubblica Amazon.</small>
@@ -19,4 +19,19 @@
   <label class="full">Note<textarea name="notes" rows="4">{{ product.get('notes','') }}</textarea></label>
   <div class="full"><button class="btn" type="submit" name="action" value="save">Salva prodotto</button></div>
 </form>
+<script>
+(function () {
+  const form = document.getElementById('product-form');
+  const input = document.getElementById('amazon-url');
+  if (!form || !input) return;
+
+  form.addEventListener('submit', function () {
+    let url = (input.value || '').trim().replace(/^["']+|["']+$/g, '');
+    if (!url) return;
+    if (url.startsWith('//')) url = 'https:' + url;
+    else if (!/^https?:\/\//i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+    input.value = url;
+  });
+})();
+</script>
 {% endblock %}
