@@ -133,6 +133,8 @@ def set_settings(values):
             values["scheduler_enabled"] = "1" if request.form.get("scheduler_enabled") else "0"
             values["email_subject_prefix"] = request.form.get("email_subject_prefix", "").strip()
             values["show_discover"] = "1" if request.form.get("show_discover") else "0"
+            for key in ("gemini_api_key_2", "gemini_api_key_3", "gemini_api_key_4", "gemini_api_key_5", "gemini_active_key", "gemini_key_mode"):
+                values[key] = request.form.get(key, "").strip()
     except Exception:
         pass
 
