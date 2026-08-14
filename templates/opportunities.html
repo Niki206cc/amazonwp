@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Radar opportunità</h1><p>Eventi e occasioni future da trasformare in articoli Amazon.</p></div>
+</div>
+<form method="post" class="panel">
+  <label>Orizzonte di ricerca
+    <select name="days">
+      {% for d in [7,14,30,60] %}<option value="{{ d }}" {% if days==d %}selected{% endif %}>Prossimi {{ d }} giorni</option>{% endfor %}
+    </select>
+  </label>
+  <div style="margin-top:12px"><button class="btn success">Trova opportunità</button></div>
+</form>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% if opportunities %}
+<div class="grid cards">
+{% for o in opportunities %}
+<article class="card">
+  <div class="card-body">
+    <div class="actions" style="justify-content:space-between;align-items:center">
+      <span class="badge">{{ o.priority|upper }} · {{ o.score }}/100</span>
+      <span class="muted">Evento: {{ o.event_date }}</span>
+    </div>
+    <h3>{{ o.name }}</h3>
+    <p><strong>Pubblica il:</strong> {{ o.publish_date }}</p>
+    {% if o.area %}<p class="muted">{{ o.area }}</p>{% endif %}
+    <p>{{ o.reason }}</p>
+    <p><strong>Taglio consigliato:</strong> {{ o.article_angle }}</p>
+    {% if o.suggested_title %}<p><strong>Titolo esempio:</strong> {{ o.suggested_title }}</p>{% endif %}
+    {% if o.product_ideas %}<p><strong>Prodotti:</strong> {{ o.product_ideas|join(', ') }}</p>{% endif %}
+    <form method="post" action="{{ url_for('opportunity_search') }}">
+      {% for k in ['name','event_date','publish_date','priority','score','area','reason','article_angle','suggested_title','amazon_query'] %}<input type="hidden" name="{{ k }}" value="{{ o[k] }}">{% endfor %}
+      <input type="hidden" name="product_ideas" value="{{ o.product_ideas|join('||') }}">
+      <button class="btn success">Cerca prodotti per questa opportunità</button>
+    </form>
+  </div>
+</article>
+{% endfor %}
+</div>
+{% elif request.method == 'POST' and not error %}<div class="empty">Nessuna opportunità trovata.</div>{% endif %}
+{% endblock %}
