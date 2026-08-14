@@ -1,7 +1,16 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Scopri prodotti Amazon</h1>
+{% if opportunity %}
+<div class="panel">
+  <span class="badge">Ricerca per opportunità</span>
+  <h2 style="margin-top:10px">{{ opportunity.name }}</h2>
+  <p><strong>Pubblicazione consigliata:</strong> {{ opportunity.publish_date }} · <strong>Evento:</strong> {{ opportunity.event_date }}</p>
+  {% if opportunity.article_angle %}<p><strong>Taglio AI:</strong> {{ opportunity.article_angle }}</p>{% endif %}
+</div>
+{% endif %}
 <form method="post" class="panel discover-form">
+  {% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}
   <div class="preset-row">
     <button name="mode" value="random" class="btn secondary">🎲 Casuali</button>
     <button name="mode" value="trend" class="btn secondary">🔥 Trend</button>
@@ -25,6 +34,7 @@
     {% if not p.dismissed %}<div class="actions">
       <form method="post" action="{{ url_for('discover_add') }}">
         {% for k in ['asin','title','amazon_url','image_url','price'] %}<input type="hidden" name="{{ k }}" value="{{ p[k] }}">{% endfor %}
+        {% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}
         <button class="btn success">Genera / apri</button>
       </form>
       <form method="post" action="{{ url_for('discover_dismiss') }}"><input type="hidden" name="asin" value="{{ p.asin }}"><input type="hidden" name="title" value="{{ p.title }}"><button class="btn danger">Scarta</button></form>
