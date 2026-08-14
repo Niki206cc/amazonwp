@@ -52,6 +52,7 @@ def init_db():
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             published_at TEXT,
+            scheduled_date TEXT,
             error TEXT,
             FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
         );
@@ -77,6 +78,10 @@ def init_db():
             created_at TEXT NOT NULL
         );
         """)
+
+        article_columns = {row["name"] for row in db.execute("PRAGMA table_info(articles)")}
+        if "scheduled_date" not in article_columns:
+            db.execute("ALTER TABLE articles ADD COLUMN scheduled_date TEXT")
 
         defaults = {
             "ai_engine": "openai",
