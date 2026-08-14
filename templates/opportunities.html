@@ -3,14 +3,14 @@
 <div class="page-head">
   <div><h1>Radar opportunità</h1><p>L'AI cerca sul web eventi reali e occasioni future da trasformare in articoli Amazon.</p></div>
 </div>
-<div class="info"><strong>Ricerca web attiva.</strong> Il Radar cerca appuntamenti nazionali e locali: scuola, astronomia, grandi eventi sportivi, festività, stagionalità, viaggi, montagna e occasioni commerciali. Le date vengono verificate sul web prima di essere proposte.</div>
+<div class="info"><strong>Ricerca web attiva.</strong> Le opportunità restano salvate nel Radar finché non le elimini manualmente. Una nuova ricerca aggiorna quelle già esistenti e aggiunge le nuove.</div>
 <form method="post" class="panel">
   <label>Orizzonte di ricerca
     <select name="days">
       {% for d in [7,14,30,60] %}<option value="{{ d }}" {% if days==d %}selected{% endif %}>Prossimi {{ d }} giorni</option>{% endfor %}
     </select>
   </label>
-  <div style="margin-top:12px"><button class="btn success">Cerca sul web e trova opportunità</button></div>
+  <div style="margin-top:12px"><button class="btn success">Cerca sul web e aggiorna opportunità</button></div>
 </form>
 {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
 {% if opportunities %}
@@ -20,10 +20,26 @@
   <div class="card-body">
     <div class="actions" style="justify-content:space-between;align-items:center">
       <span class="badge">{{ o.priority|upper }} · {{ o.score }}/100</span>
-      <span class="muted">Evento: {{ o.event_date }}</span>
+      <div class="actions" style="align-items:center">
+        <span class="muted">Evento: {{ o.event_date }}</span>
+        <form method="post" action="{{ url_for('opportunity_delete', opportunity_id=o.id) }}" onsubmit="return confirm('Eliminare questa opportunità dal Radar? Gli articoli già creati resteranno disponibili.');">
+          <button class="icon" type="submit" title="Elimina opportunità" aria-label="Elimina opportunità">×</button>
+        </form>
+      </div>
     </div>
     <h3>{{ o.name }}</h3>
     <p><strong>Pubblica il:</strong> {{ o.publish_date }}</p>
+    {% if o.article_count %}
+      <div class="info" style="margin:10px 0"><strong>✓ {{ o.article_count }} articolo{% if o.article_count != 1 %}i{% endif %} creato{% if o.article_count != 1 %}i{% endif %} per questa opportunità.</strong>
+      {% if o.article_ids_list %}
+        <span style="margin-left:8px">
+        {% for article_id in o.article_ids_list %}<a href="{{ url_for('article_edit', article_id=article_id) }}">Apri{% if o.article_ids_list|length > 1 %} #{{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+        </span>
+      {% endif %}
+      </div>
+    {% else %}
+      <p class="muted"><strong>Nessun articolo ancora creato per questa opportunità.</strong></p>
+    {% endif %}
     {% if o.area %}<p class="muted">{{ o.area }}</p>{% endif %}
     <p>{{ o.reason }}</p>
     <p><strong>Taglio consigliato:</strong> {{ o.article_angle }}</p>
@@ -31,13 +47,12 @@
     {% if o.product_ideas %}<p><strong>Prodotti:</strong> {{ o.product_ideas|join(', ') }}</p>{% endif %}
     {% if o.source_url %}<p class="muted"><strong>Fonte:</strong> <a href="{{ o.source_url }}" target="_blank" rel="noopener">{{ o.source_title or o.source_url }}</a></p>{% elif o.source_title %}<p class="muted"><strong>Fonte:</strong> {{ o.source_title }}</p>{% endif %}
     <form method="post" action="{{ url_for('opportunity_search') }}">
-      {% for k in ['name','event_date','publish_date','priority','score','area','reason','article_angle','suggested_title','amazon_query'] %}<input type="hidden" name="{{ k }}" value="{{ o[k] }}">{% endfor %}
-      <input type="hidden" name="product_ideas" value="{{ o.product_ideas|join('||') }}">
+      <input type="hidden" name="opportunity_id" value="{{ o.id }}">
       <button class="btn success">Cerca prodotti per questa opportunità</button>
     </form>
   </div>
 </article>
 {% endfor %}
 </div>
-{% elif request.method == 'POST' and not error %}<div class="empty">Nessuna opportunità trovata. Prova ad aumentare l'orizzonte di ricerca.</div>{% endif %}
+{% else %}<div class="empty">Nessuna opportunità salvata. Avvia una ricerca per creare il Radar.</div>{% endif %}
 {% endblock %}
