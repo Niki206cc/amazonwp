@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1>Coda pubblicazione</h1>
-    <p>Gli articoli programmati manualmente non verranno pubblicati prima della data scelta.</p>
+    <p>Gli articoli programmati manualmente hanno priorità sugli slot della data scelta; gli altri slittano automaticamente al primo slot libero successivo.</p>
     {% if not scheduler_enabled %}<p class="muted"><strong>Pubblicazione automatica disattivata.</strong> Gli articoli programmati resteranno in coda finché non riattivi lo scheduler o li invii manualmente.</p>{% endif %}
   </div>
 </div>
@@ -29,7 +29,8 @@
     <strong>{{ i.title }}</strong>
     <div class="muted">{{ i.product_title }}</div>
     {% if i.manual_scheduled_date %}
-      <div style="font-size:13px;margin-top:4px"><strong>Programmato manualmente:</strong> {{ i.manual_scheduled_date }} · prima fascia utile</div>
+      <div style="font-size:13px;margin-top:4px"><strong>Data programmata:</strong> {{ i.manual_scheduled_date }} <span class="badge">Priorità</span></div>
+      {% if i.scheduled_at %}<div style="font-size:13px;margin-top:3px"><strong>Pubblicazione prevista:</strong> {{ i.scheduled_at }}</div>{% endif %}
     {% elif i.scheduled_at %}
       <div style="font-size:13px;margin-top:4px"><strong>Pubblicazione prevista:</strong> {{ i.scheduled_at }}</div>
     {% endif %}
