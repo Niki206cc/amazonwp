@@ -58,6 +58,13 @@ def _opportunity_from_form():
         return data if isinstance(data,dict) else None
     except Exception:return None
 
+def _scheduled_date_from_form():
+    value=request.form.get("scheduled_date","").strip()
+    if not value:return ""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}",value):raise RuntimeError("Data di pubblicazione non valida.")
+    if value<now()[:10]:raise RuntimeError("La data di pubblicazione non può essere nel passato.")
+    return value
+
 def scrape_amazon_product(url):
     url=(url or "").strip()
     if not url or "amazon.it" not in url.lower():raise RuntimeError("Inserisci un link prodotto Amazon.it valido.")
@@ -111,8 +118,9 @@ def _quality_enabled(settings):
 
 def publish_next():
     with app.app_context():
-        with get_db() as db:item=db.execute("""SELECT q.id qid,a.*,p.local_image,p.image_url,p.price product_price,p.category FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id ORDER BY q.position ASC LIMIT 1""").fetchone()
-        if not item:log("Scheduler: coda vuota");return
+        today=now()[:10]
+        with get_db() as db:item=db.execute("""SELECT q.id qid,a.*,p.local_image,p.image_url,p.price product_price,p.category FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id WHERE COALESCE(a.scheduled_date,'')='' OR a.scheduled_date<=? ORDER BY CASE WHEN COALESCE(a.scheduled_date,'')<>'' THEN 0 ELSE 1 END,a.scheduled_date,q.position ASC LIMIT 1""",(today,)).fetchone()
+        if not item:log("Scheduler: nessun articolo pubblicabile in questo momento");return
         settings=get_settings()
         if _quality_enabled(settings):
             quality_errors=validate_article(settings,dict(item),item["local_image"],item["image_url"],item["product_price"])
@@ -186,7 +194,7 @@ def product_generate(product_id):
     try:
         opportunity=_opportunity_from_form();settings=get_settings();result=generate_article(settings,article_payload(dict(product),settings),opportunity=opportunity);result["html"]=ensure_affiliate_links(result.get("html",""),settings.get("amazon_partner_tag",""))
         with get_db() as db:cur=db.execute("""INSERT INTO articles(product_id,title,alt_titles,meta_description,excerpt,html,ai_engine,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'draft',?,?)""",(product_id,result["title"],json.dumps(result["alt_titles"],ensure_ascii=False),result.get("meta_description",""),result.get("excerpt",""),result["html"],result["engine"],now(),now()));article_id=cur.lastrowid
-        flash("Articolo generato.","success");return redirect(url_for("article_edit",article_id=article_id))
+        flash("Articolo generato. Ora puoi scegliere anche la data di pubblicazione.","success");return redirect(url_for("article_edit",article_id=article_id))
     except Exception as exc:log(f"Generazione AI fallita: {exc}","ERROR");flash(str(exc),"error");return redirect(url_for("product_edit",product_id=product_id))
 
 @app.route("/article/<int:article_id>",methods=["GET","POST"])
@@ -194,11 +202,13 @@ def article_edit(article_id):
     with get_db() as db:article=db.execute("SELECT a.*,p.title product_title,p.amazon_url,p.local_image,p.image_url FROM articles a JOIN products p ON p.id=a.product_id WHERE a.id=?",(article_id,)).fetchone()
     if not article:return "Articolo non trovato",404
     if request.method=="POST":
+        try:scheduled_date=_scheduled_date_from_form()
+        except Exception as exc:flash(str(exc),"error");return redirect(url_for("article_edit",article_id=article_id))
         titles=[request.form.get(f"alt_title_{i}","").strip() for i in range(1,6)];html=ensure_affiliate_links(request.form.get("html",""),get_settings().get("amazon_partner_tag",""))
-        with get_db() as db:db.execute("""UPDATE articles SET title=?,alt_titles=?,meta_description=?,excerpt=?,html=?,updated_at=? WHERE id=?""",(request.form.get("title",""),json.dumps(titles,ensure_ascii=False),request.form.get("meta_description",""),request.form.get("excerpt",""),html,now(),article_id))
+        with get_db() as db:db.execute("""UPDATE articles SET title=?,alt_titles=?,meta_description=?,excerpt=?,html=?,scheduled_date=?,updated_at=? WHERE id=?""",(request.form.get("title",""),json.dumps(titles,ensure_ascii=False),request.form.get("meta_description",""),request.form.get("excerpt",""),html,scheduled_date,now(),article_id))
         flash("Articolo salvato.","success");return redirect(url_for("article_edit",article_id=article_id))
     alt_titles=(json.loads(article["alt_titles"] or "[]")+[""]*5)[:5];preview_image=url_for("uploads",filename=Path(article["local_image"]).name) if article["local_image"] else article["image_url"] or ""
-    return render_template("article_edit.html",article=article,alt_titles=alt_titles,preview_image=preview_image)
+    return render_template("article_edit.html",article=article,alt_titles=alt_titles,preview_image=preview_image,today=now()[:10])
 
 @app.post("/article/<int:article_id>/delete")
 def article_delete(article_id):
@@ -206,14 +216,19 @@ def article_delete(article_id):
         article=db.execute("SELECT product_id,title FROM articles WHERE id=?",(article_id,)).fetchone()
         if not article:flash("Articolo non trovato.","error");return redirect(url_for("index"))
         product_id=article["product_id"];db.execute("DELETE FROM queue WHERE article_id=?",(article_id,));db.execute("DELETE FROM articles WHERE id=?",(article_id,))
-    normalize_queue();flash("Articolo eliminato.","success");return redirect(url_for("product_edit",product_id=product_id))
+    normalize_queue();flash("Prodotto eliminato insieme agli articoli collegati.","success");return redirect(url_for("product_edit",product_id=product_id))
 
 @app.post("/article/<int:article_id>/approve")
 def article_approve(article_id):
+    try:scheduled_date=_scheduled_date_from_form()
+    except Exception as exc:flash(str(exc),"error");return redirect(url_for("article_edit",article_id=article_id))
     with get_db() as db:
         existing=db.execute("SELECT 1 FROM queue WHERE article_id=?",(article_id,)).fetchone()
+        db.execute("UPDATE articles SET scheduled_date=?,updated_at=? WHERE id=?",(scheduled_date,now(),article_id))
         if not existing:pos=db.execute("SELECT COALESCE(MAX(position),0)+1 p FROM queue").fetchone()["p"];db.execute("INSERT INTO queue(article_id,position,approved_at) VALUES(?,?,?)",(article_id,pos,now()));db.execute("UPDATE articles SET status='queued',updated_at=? WHERE id=?",(now(),article_id))
-    flash("Articolo approvato e messo in coda.","success");return redirect(url_for("queue_page"))
+    if scheduled_date:flash(f"Articolo approvato e programmato dal {scheduled_date}.","success")
+    else:flash("Articolo approvato e messo in coda.","success")
+    return redirect(url_for("queue_page"))
 
 @app.post("/article/<int:article_id>/send-now")
 def article_send_now(article_id):
@@ -252,9 +267,13 @@ def published_page():
 @app.route("/queue")
 def queue_page():
     settings=get_settings()
-    with get_db() as db:rows=db.execute("""SELECT q.id qid,q.position,a.id article_id,a.title,a.status,a.error,p.title product_title,p.local_image,p.image_url,p.category FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id ORDER BY q.position""").fetchall()
+    with get_db() as db:rows=db.execute("""SELECT q.id qid,q.position,a.id article_id,a.title,a.status,a.error,a.scheduled_date,p.title product_title,p.local_image,p.image_url,p.category FROM queue q JOIN articles a ON a.id=q.article_id JOIN products p ON p.id=a.product_id ORDER BY q.position""").fetchall()
     items=[dict(row) for row in rows];slots=next_publish_slots(settings,len(items))
-    for index,item in enumerate(items):item["scheduled_at"]=slots[index].strftime("%d/%m/%Y %H:%M") if index<len(slots) else "";item["similar_warning"]=index>0 and are_similar_products(items[index-1],item)
+    for index,item in enumerate(items):
+        if item.get("scheduled_date"):
+            parts=item["scheduled_date"].split("-");item["manual_scheduled_date"]=f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts)==3 else item["scheduled_date"];item["scheduled_at"]=""
+        else:item["manual_scheduled_date"]="";item["scheduled_at"]=slots[index].strftime("%d/%m/%Y %H:%M") if index<len(slots) else ""
+        item["similar_warning"]=index>0 and are_similar_products(items[index-1],item)
     return render_template("queue.html",items=items,scheduler_enabled=settings.get("scheduler_enabled")=="1")
 
 @app.post("/queue/<int:qid>/<direction>")
