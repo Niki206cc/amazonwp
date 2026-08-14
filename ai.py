@@ -14,10 +14,18 @@ Il titolo deve essere separato dal corpo HTML.
 TITOLO ARTICOLO:
 - Genera un vero titolo editoriale: NON limitarti a copiare il titolo commerciale Amazon fornito nei dati prodotto.
 - Il titolo deve essere diretto, naturale e interessante, mantenendo il nome del prodotto o del marchio quando utile.
+- Se è presente un CONTESTO OPPORTUNITÀ, il titolo e l'apertura dell'articolo devono collegare chiaramente il prodotto a quell'evento o occasione, senza inventare dettagli.
 - Rispetta rigorosamente le maiuscole della lingua italiana: usa la maiuscola all'inizio del titolo e per nomi propri, marchi, sigle o denominazioni che la richiedono.
 - NON usare il Title Case inglese e NON mettere la maiuscola a parole comuni come Friggitrice, Aria, Cucina, Protezione, Solare, Tua, Molto, Altro.
 - Esempio sbagliato: \"La Cosori Turbo Blaze: Frittura ad Aria e Molto Altro per la Tua Cucina\".
 - Esempio corretto: \"Cosori Turbo Blaze: la friggitrice ad aria che semplifica la cucina di ogni giorno\".
+
+CONTESTO OPPORTUNITÀ:
+- Quando presente, trattalo come indicazione editoriale prioritaria.
+- Usa nome evento, data, territorio, motivo e taglio consigliato per spiegare perché il prodotto è utile proprio in quel momento.
+- Non trasformare un suggerimento in un fatto: se il contesto non contiene un dettaglio certo, non inventarlo.
+- Se è presente suggested_title usalo come ispirazione, non copiarlo obbligatoriamente.
+- Esempio: opportunità \"eclissi di Sole del 14 agosto\" + prodotto \"occhiali per eclissi\" -> titolo possibile: \"Occhiali per l'eclissi di Sole del 14 agosto: come prepararsi per osservarla\".
 
 TITOLO FACEBOOK:
 - Genera un solo titolo Facebook distinto dal titolo dell'articolo.
@@ -37,8 +45,11 @@ Restituisci SOLO JSON valido con chiavi: title, facebook_title, meta_description
 """
 
 
-def build_prompt(product):
-    return SYSTEM_RULES + "\n\nDATI PRODOTTO:\n" + json.dumps(product, ensure_ascii=False, indent=2)
+def build_prompt(product, opportunity=None):
+    prompt = SYSTEM_RULES + "\n\nDATI PRODOTTO:\n" + json.dumps(product, ensure_ascii=False, indent=2)
+    if opportunity:
+        prompt += "\n\nCONTESTO OPPORTUNITÀ:\n" + json.dumps(opportunity, ensure_ascii=False, indent=2)
+    return prompt
 
 
 def _extract_json(text):
@@ -59,7 +70,6 @@ def _ensure_price_and_links(html_text, product):
     price = str(product.get("price") or "").strip()
 
     if price:
-        # Se l'AI ha omesso il prezzo, lo aggiungiamo in modo trasparente.
         if price.lower() not in html_text.lower():
             price_block = (
                 f'<p><strong>Prezzo indicato:</strong> {escape(price)}. '
@@ -75,7 +85,6 @@ def _ensure_price_and_links(html_text, product):
     if not amazon_url:
         return html_text
 
-    # Conta i link Amazon già presenti nell'HTML.
     link_count = len(re.findall(r'href=["\'][^"\']*amazon\.it[^"\']*["\']', html_text, flags=re.I))
     needed = max(0, 3 - link_count)
     if needed == 0:
@@ -89,15 +98,12 @@ def _ensure_price_and_links(html_text, product):
 
     additions = ctas[:needed]
 
-    # Prova a distribuire il primo richiamo subito dopo il primo paragrafo.
     if additions:
         first_p = html_text.lower().find("</p>")
         if first_p >= 0:
             insert_at = first_p + 4
             html_text = html_text[:insert_at] + "\n" + additions.pop(0) + html_text[insert_at:]
 
-    # Gli altri richiami vengono inseriti prima della dichiarazione di affiliazione,
-    # se presente, altrimenti in fondo all'articolo.
     if additions:
         disclosure = "In qualità di Affiliato Amazon"
         pos = html_text.find(disclosure)
@@ -111,13 +117,13 @@ def _ensure_price_and_links(html_text, product):
     return html_text
 
 
-def generate_openai(settings, product):
+def generate_openai(settings, product, opportunity=None):
     key = settings.get("openai_api_key", "").strip()
     if not key:
         raise RuntimeError("API key OpenAI non configurata")
     payload = {
         "model": settings.get("openai_model") or "gpt-5-mini",
-        "input": build_prompt(product),
+        "input": build_prompt(product, opportunity),
     }
     r = requests.post(
         "https://api.openai.com/v1/responses",
@@ -139,14 +145,14 @@ def generate_openai(settings, product):
     return _extract_json(text)
 
 
-def generate_gemini(settings, product):
+def generate_gemini(settings, product, opportunity=None):
     key = settings.get("gemini_api_key", "").strip()
     if not key:
         raise RuntimeError("API key Gemini non configurata")
     model = settings.get("gemini_model") or "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     payload = {
-        "contents": [{"parts": [{"text": build_prompt(product)}]}],
+        "contents": [{"parts": [{"text": build_prompt(product, opportunity)}]}],
         "generationConfig": {"responseMimeType": "application/json"},
     }
     r = requests.post(url, json=payload, timeout=90)
@@ -157,9 +163,9 @@ def generate_gemini(settings, product):
     return _extract_json(text)
 
 
-def generate_article(settings, product):
+def generate_article(settings, product, opportunity=None):
     engine = (settings.get("ai_engine") or "openai").lower()
-    result = generate_gemini(settings, product) if engine == "gemini" else generate_openai(settings, product)
+    result = generate_gemini(settings, product, opportunity) if engine == "gemini" else generate_openai(settings, product, opportunity)
 
     title = str(result.get("title") or "").strip()
     if not title:
@@ -172,9 +178,6 @@ def generate_article(settings, product):
     result["facebook_title"] = facebook_title
 
     result["html"] = _ensure_price_and_links(result.get("html", ""), product)
-
-    # Manteniamo il campo storico alt_titles nel database per compatibilità,
-    # ma dalla v1.1.3 contiene esclusivamente il Titolo Facebook.
     result["alt_titles"] = [facebook_title]
     result["engine"] = engine
     return result
