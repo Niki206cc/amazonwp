@@ -14,6 +14,7 @@ from mailer import send_article
 from scheduler import configure_scheduler, start_scheduler
 from quality import validate_article
 from planning import next_publish_slots, are_similar_products
+from opportunities import generate_opportunities
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -48,6 +49,14 @@ def _first_match(page,patterns):
         m=re.search(pattern,page,re.I|re.S)
         if m:return _clean_text(m.group(1))
     return ""
+
+def _opportunity_from_form():
+    raw=request.form.get("opportunity_json","").strip()
+    if not raw:return None
+    try:
+        data=json.loads(raw)
+        return data if isinstance(data,dict) else None
+    except Exception:return None
 
 def scrape_amazon_product(url):
     url=(url or "").strip()
@@ -147,13 +156,17 @@ def product_new():
 
 @app.route("/product/<int:product_id>",methods=["GET","POST"])
 def product_edit(product_id):
+    opportunity=None;opportunity_json=request.args.get("opportunity","")
+    if opportunity_json:
+        try:opportunity=json.loads(opportunity_json)
+        except Exception:opportunity=None;opportunity_json=""
     with get_db() as db:product=db.execute("SELECT * FROM products WHERE id=?",(product_id,)).fetchone();articles=db.execute("SELECT * FROM articles WHERE product_id=? ORDER BY id DESC",(product_id,)).fetchall()
     if not product:return "Prodotto non trovato",404
     if request.method=="POST":
         url=request.form.get("amazon_url","").strip();asin=request.form.get("asin","").strip().upper() or extract_asin(url);url=affiliate_url(url,asin,get_settings().get("amazon_partner_tag",""))
         with get_db() as db:db.execute("""UPDATE products SET asin=?,title=?,amazon_url=?,image_url=?,price=?,category=?,features=?,notes=?,updated_at=? WHERE id=?""",(asin,request.form.get("title",""),url,request.form.get("image_url",""),request.form.get("price",""),request.form.get("category",""),request.form.get("features",""),request.form.get("notes",""),now(),product_id))
         flash("Prodotto aggiornato.","success");return redirect(url_for("product_edit",product_id=product_id))
-    return render_template("product_edit.html",product=product,articles=articles,duplicate=duplicate_for(product["asin"],product["amazon_url"],product_id))
+    return render_template("product_edit.html",product=product,articles=articles,duplicate=duplicate_for(product["asin"],product["amazon_url"],product_id),opportunity=opportunity,opportunity_json=opportunity_json)
 
 @app.post("/product/<int:product_id>/delete")
 def product_delete(product_id):
@@ -171,7 +184,7 @@ def product_generate(product_id):
     with get_db() as db:product=db.execute("SELECT * FROM products WHERE id=?",(product_id,)).fetchone()
     if not product:return "Prodotto non trovato",404
     try:
-        settings=get_settings();result=generate_article(settings,article_payload(dict(product),settings));result["html"]=ensure_affiliate_links(result.get("html",""),settings.get("amazon_partner_tag",""))
+        opportunity=_opportunity_from_form();settings=get_settings();result=generate_article(settings,article_payload(dict(product),settings),opportunity=opportunity);result["html"]=ensure_affiliate_links(result.get("html",""),settings.get("amazon_partner_tag",""))
         with get_db() as db:cur=db.execute("""INSERT INTO articles(product_id,title,alt_titles,meta_description,excerpt,html,ai_engine,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'draft',?,?)""",(product_id,result["title"],json.dumps(result["alt_titles"],ensure_ascii=False),result.get("meta_description",""),result.get("excerpt",""),result["html"],result["engine"],now(),now()));article_id=cur.lastrowid
         flash("Articolo generato.","success");return redirect(url_for("article_edit",article_id=article_id))
     except Exception as exc:log(f"Generazione AI fallita: {exc}","ERROR");flash(str(exc),"error");return redirect(url_for("product_edit",product_id=product_id))
@@ -260,24 +273,49 @@ def queue_remove(qid):
         if item:db.execute("DELETE FROM queue WHERE id=?",(qid,));db.execute("UPDATE articles SET status='draft',updated_at=? WHERE id=?",(now(),item["article_id"]))
     normalize_queue();return redirect(url_for("queue_page"))
 
+@app.route("/opportunities",methods=["GET","POST"])
+def opportunities():
+    rows=[];error=None
+    try:days=max(7,min(int(request.values.get("days",30)),60))
+    except Exception:days=30
+    if request.method=="POST":
+        try:rows=generate_opportunities(get_settings(),days=days)
+        except Exception as exc:error=str(exc)
+    return render_template("opportunities.html",opportunities=rows,error=error,days=days)
+
+@app.post("/opportunities/search")
+def opportunity_search():
+    opportunity={
+        "name":request.form.get("name",""),"event_date":request.form.get("event_date",""),"publish_date":request.form.get("publish_date",""),
+        "priority":request.form.get("priority",""),"score":request.form.get("score",""),"area":request.form.get("area",""),"reason":request.form.get("reason",""),
+        "article_angle":request.form.get("article_angle",""),"suggested_title":request.form.get("suggested_title",""),"amazon_query":request.form.get("amazon_query",""),
+        "product_ideas":[x for x in request.form.get("product_ideas","").split("||") if x],
+    }
+    payload=json.dumps(opportunity,ensure_ascii=False,separators=(",",":"))
+    return redirect(url_for("discover",query=opportunity.get("amazon_query","") or opportunity.get("name",""),opportunity=payload))
+
 @app.route("/discover",methods=["GET","POST"])
 def discover():
     products=[];error=None;mode=request.values.get("mode","random");query=request.values.get("query","");max_price=request.values.get("max_price","") or None
+    opportunity_json=request.values.get("opportunity_json","") or request.args.get("opportunity","");opportunity=None
+    if opportunity_json:
+        try:opportunity=json.loads(opportunity_json)
+        except Exception:opportunity=None;opportunity_json=""
     if request.method=="POST":
         try:
             products=search_products(get_settings(),mode=mode,query=query,max_price=max_price)
             with get_db() as db:dismissed={row["asin"] for row in db.execute("SELECT asin FROM dismissed_products")};existing={row["asin"] for row in db.execute("SELECT asin FROM products WHERE asin<>''")}
             for product in products:product["dismissed"]=product["asin"] in dismissed;product["duplicate"]=product["asin"] in existing
         except Exception as exc:error=str(exc)
-    return render_template("discover.html",products=products,error=error,mode=mode,query=query,max_price=max_price or "")
+    return render_template("discover.html",products=products,error=error,mode=mode,query=query,max_price=max_price or "",opportunity=opportunity,opportunity_json=opportunity_json)
 
 @app.post("/discover/add")
 def discover_add():
-    asin=request.form.get("asin","");settings=get_settings();amazon_url=affiliate_url(request.form.get("amazon_url",""),asin,settings.get("amazon_partner_tag",""))
+    asin=request.form.get("asin","");settings=get_settings();amazon_url=affiliate_url(request.form.get("amazon_url",""),asin,settings.get("amazon_partner_tag",""));opportunity_json=request.form.get("opportunity_json","").strip()
     with get_db() as db:
         cur=db.execute("""INSERT INTO products(asin,title,amazon_url,image_url,price,category,features,notes,source,status,created_at,updated_at) VALUES(?,?,?,?,?,'','','','amazon','draft',?,?)""",(asin,request.form.get("title",""),amazon_url,request.form.get("image_url",""),request.form.get("price",""),now(),now()));product_id=cur.lastrowid;local=save_remote_image(request.form.get("image_url",""),product_id)
         if local:db.execute("UPDATE products SET local_image=? WHERE id=?",(local,product_id))
-    return redirect(url_for("product_edit",product_id=product_id))
+    return redirect(url_for("product_edit",product_id=product_id,opportunity=opportunity_json) if opportunity_json else url_for("product_edit",product_id=product_id))
 
 @app.post("/discover/dismiss")
 def discover_dismiss():
