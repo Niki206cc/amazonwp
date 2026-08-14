@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from flask import request
 
 import app as appmod
