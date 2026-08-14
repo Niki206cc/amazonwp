@@ -13,4 +13,4 @@ COPY . .
 RUN mkdir -p /app/data/uploads
 
 EXPOSE 8085
-CMD ["python", "-c", "import sitecustomize, runpy; runpy.run_path('app.py', run_name='__main__')"]
+CMD ["python", "-c", "import sitecustomize, runpy; runpy.run_path('runner.py', run_name='__main__')"]
