@@ -1,23 +1,36 @@
 import json
 import re
+from pathlib import Path
 
 from flask import flash, redirect, request, url_for
 
 import app as appmod
 
 
+def _parse_opportunity(raw):
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _recommended_date(opportunity):
+    if not opportunity:
+        return ""
+    candidate = str(opportunity.get("publish_date") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", candidate) and candidate >= appmod.now()[:10]:
+        return candidate
+    return ""
+
+
 @appmod.app.post("/discover/manual-link")
 def discover_manual_link():
     opportunity_json = request.form.get("opportunity_json", "").strip()
     amazon_url = request.form.get("amazon_url", "").strip()
-    opportunity = None
-    if opportunity_json:
-        try:
-            parsed = json.loads(opportunity_json)
-            if isinstance(parsed, dict):
-                opportunity = parsed
-        except Exception:
-            opportunity = None
+    opportunity = _parse_opportunity(opportunity_json)
 
     try:
         if not amazon_url:
@@ -62,20 +75,98 @@ def discover_manual_link():
                 with appmod.get_db() as db:
                     db.execute("UPDATE products SET local_image=? WHERE id=?", (local, product_id))
 
+        if duplicate:
+            flash(
+                f"Prodotto importato. Attenzione: risulta già presente nell’articolo “{duplicate['article_title']}”. Controlla i dati prima di generare.",
+                "warning",
+            )
+        else:
+            flash("Prodotto importato dal link. Controlla e completa i dati, poi genera l’articolo.", "success")
+
+        return redirect(url_for("product_edit", product_id=product_id, opportunity=opportunity_json))
+
+    except Exception as exc:
+        appmod.log(f"Importazione link Radar fallita: {exc}", "ERROR")
+        flash(str(exc), "error")
+        query = opportunity.get("amazon_query", "") if opportunity else ""
+        return redirect(url_for("discover", query=query, opportunity=opportunity_json))
+
+
+def product_edit_with_opportunity(product_id):
+    opportunity_json = request.args.get("opportunity", "") or request.form.get("opportunity_json", "")
+    opportunity_json = opportunity_json.strip()
+    opportunity = _parse_opportunity(opportunity_json)
+
+    with appmod.get_db() as db:
+        product = db.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone()
+        articles = db.execute("SELECT * FROM articles WHERE product_id=? ORDER BY id DESC", (product_id,)).fetchall()
+    if not product:
+        return "Prodotto non trovato", 404
+
+    if request.method == "POST":
+        url = request.form.get("amazon_url", "").strip()
+        asin = request.form.get("asin", "").strip().upper() or appmod.extract_asin(url)
+        url = appmod.affiliate_url(url, asin, appmod.get_settings().get("amazon_partner_tag", ""))
+        new_image_url = request.form.get("image_url", "").strip()
+
+        with appmod.get_db() as db:
+            db.execute(
+                """UPDATE products SET asin=?,title=?,amazon_url=?,image_url=?,price=?,category=?,features=?,notes=?,updated_at=? WHERE id=?""",
+                (
+                    asin,
+                    request.form.get("title", ""),
+                    url,
+                    new_image_url,
+                    request.form.get("price", ""),
+                    request.form.get("category", ""),
+                    request.form.get("features", ""),
+                    request.form.get("notes", ""),
+                    appmod.now(),
+                    product_id,
+                ),
+            )
+
+        if new_image_url and new_image_url != (product["image_url"] or ""):
+            local = appmod.save_remote_image(new_image_url, product_id)
+            if local:
+                with appmod.get_db() as db:
+                    db.execute("UPDATE products SET local_image=? WHERE id=?", (local, product_id))
+
+        flash("Prodotto aggiornato. Il contesto del Radar è stato mantenuto.", "success")
+        if opportunity_json:
+            return redirect(url_for("product_edit", product_id=product_id, opportunity=opportunity_json))
+        return redirect(url_for("product_edit", product_id=product_id))
+
+    return appmod.render_template(
+        "product_edit.html",
+        product=product,
+        articles=articles,
+        duplicate=appmod.duplicate_for(product["asin"], product["amazon_url"], product_id),
+        opportunity=opportunity,
+        opportunity_json=opportunity_json,
+    )
+
+
+def product_generate_with_opportunity(product_id):
+    with appmod.get_db() as db:
+        product = db.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone()
+    if not product:
+        return "Prodotto non trovato", 404
+
+    opportunity_json = request.form.get("opportunity_json", "").strip()
+    opportunity = _parse_opportunity(opportunity_json)
+
+    try:
+        settings = appmod.get_settings()
         result = appmod.generate_article(
             settings,
-            appmod.article_payload(product, settings),
+            appmod.article_payload(dict(product), settings),
             opportunity=opportunity,
         )
         result["html"] = appmod.ensure_affiliate_links(
             result.get("html", ""), settings.get("amazon_partner_tag", "")
         )
-
-        scheduled_date = ""
-        if opportunity:
-            candidate = str(opportunity.get("publish_date") or "").strip()
-            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", candidate) and candidate >= appmod.now()[:10]:
-                scheduled_date = candidate
+        scheduled_date = _recommended_date(opportunity)
 
         with appmod.get_db() as db:
             cur = db.execute(
@@ -96,25 +187,25 @@ def discover_manual_link():
             )
             article_id = cur.lastrowid
 
-        if duplicate:
-            flash(
-                f"Articolo generato dal link. Attenzione: il prodotto risultava già presente nell’articolo “{duplicate['article_title']}”.",
-                "warning",
-            )
-        elif scheduled_date:
-            flash(
-                f"Articolo generato dal link con il contesto del Radar. Data consigliata preimpostata: {scheduled_date}.",
-                "success",
-            )
+        if scheduled_date:
+            flash(f"Articolo generato con il contesto del Radar. Data consigliata preimpostata: {scheduled_date}.", "success")
+        elif opportunity:
+            flash("Articolo generato con tutti i parametri dell’opportunità Radar.", "success")
         else:
-            flash("Articolo generato dal link con tutto il contesto del Radar.", "success")
+            flash("Articolo generato.", "success")
         return redirect(url_for("article_edit", article_id=article_id))
 
     except Exception as exc:
-        appmod.log(f"Generazione da link Radar fallita: {exc}", "ERROR")
+        appmod.log(f"Generazione AI fallita: {exc}", "ERROR")
         flash(str(exc), "error")
-        query = opportunity.get("amazon_query", "") if opportunity else ""
-        return redirect(url_for("discover", query=query, opportunity=opportunity_json))
+        if opportunity_json:
+            return redirect(url_for("product_edit", product_id=product_id, opportunity=opportunity_json))
+        return redirect(url_for("product_edit", product_id=product_id))
+
+
+# Mantiene gli URL originali ma sostituisce le view con le versioni che preservano il contesto Radar.
+appmod.app.view_functions["product_edit"] = product_edit_with_opportunity
+appmod.app.view_functions["product_generate"] = product_generate_with_opportunity
 
 
 if __name__ == "__main__":
