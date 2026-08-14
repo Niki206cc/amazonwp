@@ -88,6 +88,12 @@ def init_db():
             "openai_api_key": "",
             "openai_model": "gpt-5-mini",
             "gemini_api_key": "",
+            "gemini_api_key_2": "",
+            "gemini_api_key_3": "",
+            "gemini_api_key_4": "",
+            "gemini_api_key_5": "",
+            "gemini_active_key": "1",
+            "gemini_key_mode": "manual",
             "gemini_model": "gemini-2.5-flash",
             "smtp_host": "",
             "smtp_port": "587",
@@ -120,8 +126,6 @@ def get_settings():
 def set_settings(values):
     values = dict(values)
 
-    # Gestione dei checkbox e dei campi che nelle prime versioni non erano
-    # presenti nella whitelist della route /settings.
     try:
         from flask import has_request_context, request
 
