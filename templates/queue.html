@@ -7,10 +7,21 @@
     {% if not scheduler_enabled %}<p class="muted"><strong>Pubblicazione automatica disattivata.</strong> Gli articoli programmati resteranno in coda finché non riattivi lo scheduler o li invii manualmente.</p>{% endif %}
   </div>
 </div>
+
+<div class="panel" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+  <div><strong>Ordina elenco:</strong></div>
+  <div class="actions" style="flex-wrap:wrap">
+    <a class="btn small {% if sort_by=='position' and direction=='asc' %}success{% else %}secondary{% endif %}" href="{{ url_for('queue_page', sort='position', dir='asc') }}">Numero ↑</a>
+    <a class="btn small {% if sort_by=='position' and direction=='desc' %}success{% else %}secondary{% endif %}" href="{{ url_for('queue_page', sort='position', dir='desc') }}">Numero ↓</a>
+    <a class="btn small {% if sort_by=='date' and direction=='asc' %}success{% else %}secondary{% endif %}" href="{{ url_for('queue_page', sort='date', dir='asc') }}">Data pubblicazione ↑</a>
+    <a class="btn small {% if sort_by=='date' and direction=='desc' %}success{% else %}secondary{% endif %}" href="{{ url_for('queue_page', sort='date', dir='desc') }}">Data pubblicazione ↓</a>
+  </div>
+</div>
+
 <div class="panel">
 {% for i in items %}
 <div class="queue-row">
-  <div class="queue-pos">{{ i.position }}</div>
+  <div class="queue-pos" title="Posizione reale in coda">{{ i.position }}</div>
   <div class="queue-thumb-wrap">
     <img class="queue-thumb" data-preview-url="{{ url_for('article_edit', article_id=i.article_id) }}" alt="{{ i.product_title }}" hidden>
   </div>
@@ -22,11 +33,11 @@
     {% elif i.scheduled_at %}
       <div style="font-size:13px;margin-top:4px"><strong>Pubblicazione prevista:</strong> {{ i.scheduled_at }}</div>
     {% endif %}
-    {% if i.similar_warning %}<div style="font-size:13px;margin-top:4px;color:#a66400"><strong>Attenzione:</strong> prodotto simile a quello precedente in coda.</div>{% endif %}
+    {% if i.similar_warning %}<div style="font-size:13px;margin-top:4px;color:#a66400"><strong>Attenzione:</strong> prodotto simile a quello precedente nell'ordinamento visualizzato.</div>{% endif %}
     {% if i.error %}<div style="font-size:13px;margin-top:4px;color:#b42318"><strong>Ultimo problema:</strong> {{ i.error }}</div>{% endif %}
   </div>
-  <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='up') }}"><button class="icon">↑</button></form>
-  <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='down') }}"><button class="icon">↓</button></form>
+  <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='up') }}"><button class="icon" title="Sposta su nell'ordine reale">↑</button></form>
+  <form method="post" action="{{ url_for('queue_move', qid=i.qid, direction='down') }}"><button class="icon" title="Sposta giù nell'ordine reale">↓</button></form>
   <a class="btn small" href="{{ url_for('article_edit', article_id=i.article_id) }}">Modifica</a>
   <form method="post" action="{{ url_for('queue_remove', qid=i.qid) }}"><button class="btn small danger">Rimuovi</button></form>
 </div>
