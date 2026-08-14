@@ -29,14 +29,14 @@
 {% if opportunity %}
 <section class="panel" style="border:2px solid rgba(0,0,0,.08)">
   <h2 style="margin-top:0">Hai trovato tu il prodotto su Amazon?</h2>
-  <p>Non servono le Creators API. Cerca manualmente su Amazon il prodotto più adatto a <strong>{{ opportunity.name }}</strong>, incolla qui il link e il sistema recupererà i dati del prodotto e genererà direttamente l’articolo usando tutto il contesto del Radar.</p>
+  <p>Cerca manualmente su Amazon il prodotto più adatto a <strong>{{ opportunity.name }}</strong> e incolla qui il link. Il sistema importa i dati del prodotto e apre la scheda di modifica: potrai correggere prezzo, immagine, caratteristiche e note prima di generare l’articolo.</p>
   <form method="post" action="{{ url_for('discover_manual_link') }}">
     <input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>
     <div class="search-row">
       <input name="amazon_url" required placeholder="Incolla il link del prodotto Amazon.it">
-      <button class="btn success" type="submit">Importa e genera articolo</button>
+      <button class="btn success" type="submit">Importa</button>
     </div>
-    <small>Verranno passati all’AI evento, data evento, pubblicazione consigliata, taglio editoriale, motivazione, titolo suggerito e idee prodotto. Se la data consigliata è futura, verrà anche preimpostata nel calendario dell’articolo.</small>
+    <small>Il contesto del Radar viene conservato fino alla generazione: evento, data evento, pubblicazione consigliata, taglio editoriale, motivazione, titolo suggerito e idee prodotto.</small>
   </form>
 </section>
 {% endif %}
