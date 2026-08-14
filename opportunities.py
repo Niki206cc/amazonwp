@@ -70,7 +70,6 @@ Restituisci SOLO JSON valido con chiave opportunities contenente una lista da 8 
 def _extract_json(text):
     text = (text or "").strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S)
-    # Alcuni modelli possono aggiungere una breve frase prima/dopo il JSON.
     if not text.startswith("{"):
         start = text.find("{")
         end = text.rfind("}")
@@ -133,7 +132,6 @@ def _call_gemini(settings, prompt):
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}],
-        "generationConfig": {"responseMimeType": "application/json"},
     }
     r = requests.post(url, json=payload, timeout=180)
     if not r.ok:
@@ -151,15 +149,12 @@ def _parse_date(value):
     raw = str(value or "").strip()
     if not raw:
         return None
-
-    # Accetta anche timestamp ISO o intervalli che iniziano con YYYY-MM-DD.
     m = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
     if m:
         try:
             return datetime.strptime(m.group(1), "%Y-%m-%d").date()
         except ValueError:
             pass
-
     for fmt in ("%d/%m/%Y", "%d-%m-%Y"):
         try:
             return datetime.strptime(raw, fmt).date()
@@ -200,8 +195,6 @@ def generate_opportunities(settings, days=90, today=None):
             continue
         if event_date < today or event_date > limit:
             continue
-
-        # Se il modello omette la pubblicazione, applichiamo un anticipo sicuro di 2 giorni.
         if not publish_date:
             publish_date = max(today, event_date - timedelta(days=2))
         if publish_date >= event_date:
