@@ -4,189 +4,65 @@ from urllib.parse import urlparse, parse_qs
 
 import requests
 
-
 SEARCH_PRESETS = {
-    "random": [
-        "smart home",
-        "accessori auto",
-        "cucina",
-        "fai da te",
-        "giardino",
-        "sport",
-        "gadget utili",
-    ],
-    "trend": [
-        "prodotti di tendenza",
-        "gadget tecnologia",
-        "casa intelligente",
-    ],
-    "bestseller": [
-        "best seller",
-        "più venduti",
-    ],
-    "new": [
-        "novità",
-        "nuovi arrivi",
-    ],
-    "deals": [
-        "offerte",
-        "occasioni",
-    ],
+    "random": ["smart home", "accessori auto", "cucina", "fai da te", "giardino", "sport", "gadget utili"],
+    "trend": ["prodotti di tendenza", "gadget tecnologia", "casa intelligente"],
+    "bestseller": ["best seller", "più venduti"],
+    "new": ["novità", "nuovi arrivi"],
+    "deals": ["offerte", "occasioni"],
 }
 
 
 def extract_asin(url):
-    """
-    Estrae l'ASIN da un URL Amazon.
-    """
     if not url:
         return ""
-
-    match = re.search(
-        r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)",
-        url,
-        re.I,
-    )
-
+    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)", url, re.I)
     if match:
         return match.group(1).upper()
-
     try:
         query_string = parse_qs(urlparse(url).query)
-
         for key in ("asin", "ASIN"):
             if query_string.get(key):
                 return query_string[key][0].upper()
-
     except Exception:
         pass
-
     return ""
 
 
 def _token(settings):
-    """
-    Ottiene il token OAuth 2.0 per Amazon Creators API.
-    """
-
-    token_url = (
-        settings.get("amazon_token_url")
-        or "https://api.amazon.co.uk/auth/o2/token"
-    ).strip()
-
-    credential_id = settings.get(
-        "amazon_credential_id",
-        "",
-    ).strip()
-
-    secret = settings.get(
-        "amazon_secret",
-        "",
-    ).strip()
-
+    token_url = (settings.get("amazon_token_url") or "https://api.amazon.co.uk/auth/o2/token").strip()
+    credential_id = settings.get("amazon_credential_id", "").strip()
+    secret = settings.get("amazon_secret", "").strip()
     if not credential_id or not secret:
-        raise RuntimeError(
-            "Credenziali Amazon Creators API non configurate"
-        )
-
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": credential_id,
-        "client_secret": secret,
-        "scope": "creatorsapi::default",
-    }
-
+        raise RuntimeError("Credenziali Amazon Creators API non configurate")
+    payload = {"grant_type": "client_credentials", "client_id": credential_id, "client_secret": secret, "scope": "creatorsapi::default"}
     try:
-        response = requests.post(
-            token_url,
-            json=payload,
-            headers={
-                "Content-Type": "application/json",
-            },
-            timeout=30,
-        )
-
+        response = requests.post(token_url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
     except requests.RequestException as exc:
-        raise RuntimeError(
-            f"Errore connessione Amazon OAuth: {exc}"
-        ) from exc
-
+        raise RuntimeError(f"Errore connessione Amazon OAuth: {exc}") from exc
     if not response.ok:
-        raise RuntimeError(
-            f"Amazon OAuth: HTTP {response.status_code} - "
-            f"{response.text[:500]}"
-        )
-
+        raise RuntimeError(f"Amazon OAuth: HTTP {response.status_code} - {response.text[:500]}")
     try:
         data = response.json()
     except ValueError as exc:
-        raise RuntimeError(
-            "Amazon OAuth ha restituito una risposta non JSON"
-        ) from exc
-
+        raise RuntimeError("Amazon OAuth ha restituito una risposta non JSON") from exc
     access_token = data.get("access_token")
-
     if not access_token:
-        raise RuntimeError(
-            f"Amazon OAuth non ha restituito access_token: {data}"
-        )
-
+        raise RuntimeError(f"Amazon OAuth non ha restituito access_token: {data}")
     return access_token
 
 
-def search_products(
-    settings,
-    mode="random",
-    query="",
-    max_price=None,
-):
-    """
-    Cerca prodotti tramite Amazon Creators API SearchItems.
-
-    Restituisce una lista normalizzata contenente:
-    asin
-    title
-    image_url
-    price
-    amazon_url
-    """
-
+def search_products(settings, mode="random", query="", max_price=None):
     query = (query or "").strip()
-
-    if query:
-        search_term = query
-    else:
-        presets = SEARCH_PRESETS.get(
-            mode,
-            SEARCH_PRESETS["random"],
-        )
-        search_term = random.choice(presets)
-
+    search_term = query if query else random.choice(SEARCH_PRESETS.get(mode, SEARCH_PRESETS["random"]))
     token = _token(settings)
-
-    base = (
-        settings.get("amazon_api_base")
-        or "https://creatorsapi.amazon"
-    ).strip().rstrip("/")
-
-    partner_tag = settings.get(
-        "amazon_partner_tag",
-        "",
-    ).strip()
-
-    marketplace = (
-        settings.get("amazon_marketplace")
-        or "www.amazon.it"
-    ).strip()
-
+    base = (settings.get("amazon_api_base") or "https://creatorsapi.amazon").strip().rstrip("/")
+    partner_tag = settings.get("amazon_partner_tag", "").strip()
+    marketplace = (settings.get("amazon_marketplace") or "www.amazon.it").strip()
     if not partner_tag:
-        raise RuntimeError(
-            "Partner Tag Amazon non configurato"
-        )
+        raise RuntimeError("Partner Tag Amazon non configurato")
 
-    # Endpoint ufficiale Creators API
     url = f"{base}/catalog/v1/searchItems"
-
     payload = {
         "keywords": search_term,
         "partnerTag": partner_tag,
@@ -195,271 +71,157 @@ def search_products(
         "resources": [
             "images.primary.large",
             "itemInfo.title",
+            "itemInfo.byLineInfo",
+            "itemInfo.classifications",
+            "itemInfo.features",
+            "itemInfo.productInfo",
+            "itemInfo.technicalInfo",
+            "browseNodeInfo.browseNodes",
             "offersV2.listings.price",
+            "offersV2.listings.availability",
         ],
     }
-
-    # Amazon vuole il prezzo nell'unità minima:
-    # 30,00 € -> 3000
     if max_price not in (None, ""):
         try:
-            max_price_float = float(
-                str(max_price).replace(",", ".")
-            )
-
+            max_price_float = float(str(max_price).replace(",", "."))
             if max_price_float > 0:
-                payload["maxPrice"] = int(
-                    round(max_price_float * 100)
-                )
-
+                payload["maxPrice"] = int(round(max_price_float * 100))
         except (TypeError, ValueError):
-            raise RuntimeError(
-                f"Prezzo massimo non valido: {max_price}"
-            )
+            raise RuntimeError(f"Prezzo massimo non valido: {max_price}")
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "x-marketplace": marketplace,
-    }
-
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "application/json", "x-marketplace": marketplace}
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=45,
-        )
-
+        response = requests.post(url, headers=headers, json=payload, timeout=45)
     except requests.RequestException as exc:
-        raise RuntimeError(
-            f"Errore connessione Amazon SearchItems: {exc}"
-        ) from exc
-
+        raise RuntimeError(f"Errore connessione Amazon SearchItems: {exc}") from exc
     if not response.ok:
-        raise RuntimeError(
-            f"Amazon SearchItems: HTTP "
-            f"{response.status_code} - "
-            f"{response.text[:1000]}"
-        )
-
+        raise RuntimeError(f"Amazon SearchItems: HTTP {response.status_code} - {response.text[:1000]}")
     try:
         data = response.json()
-
     except ValueError as exc:
-        raise RuntimeError(
-            "Amazon SearchItems ha restituito "
-            "una risposta non JSON"
-        ) from exc
+        raise RuntimeError("Amazon SearchItems ha restituito una risposta non JSON") from exc
 
-    # Creators API usa normalmente:
-    #
-    # {
-    #   "searchResult": {
-    #       "items": [...]
-    #   }
-    # }
-
-    search_result = (
-        data.get("searchResult")
-        or data.get("SearchResult")
-        or {}
-    )
-
-    items = (
-        search_result.get("items")
-        or search_result.get("Items")
-        or data.get("items")
-        or data.get("Items")
-        or []
-    )
-
+    search_result = data.get("searchResult") or data.get("SearchResult") or {}
+    items = search_result.get("items") or search_result.get("Items") or data.get("items") or data.get("Items") or []
     normalized = []
-
     for item in items:
         try:
-            product = _normalize_item(
-                item,
-                partner_tag,
-                marketplace,
-            )
-
+            product = _normalize_item(item, partner_tag, marketplace)
             if product.get("asin") or product.get("title"):
                 normalized.append(product)
-
         except Exception:
-            # Un prodotto malformato non deve bloccare
-            # tutta la ricerca.
             continue
-
     return normalized
 
 
+def _display(value):
+    if isinstance(value, dict):
+        result = value.get("displayValue")
+        if result is None:
+            result = value.get("DisplayValue")
+        return result
+    return value
+
+
+def _format_value(value):
+    value = _display(value)
+    if value in (None, "", [], {}):
+        return ""
+    if isinstance(value, bool):
+        return "Sì" if value else "No"
+    if isinstance(value, list):
+        parts = [_format_value(v) for v in value]
+        return ", ".join(p for p in parts if p)
+    if isinstance(value, dict):
+        parts = []
+        for key, val in value.items():
+            formatted = _format_value(val)
+            if formatted:
+                parts.append(f"{key}: {formatted}")
+        return "; ".join(parts)
+    return str(value)
+
+
 def _normalize_item(item, partner_tag, marketplace):
-    """
-    Normalizza un prodotto restituito dalla Creators API.
+    asin = item.get("asin") or item.get("ASIN") or ""
+    item_info = item.get("itemInfo") or item.get("ItemInfo") or {}
 
-    Gestisce sia la struttura nuova in camelCase
-    sia alcune strutture PA-API precedenti.
-    """
+    title_data = item_info.get("title") or item_info.get("Title") or {}
+    title = _display(title_data) or item.get("title") or "Prodotto Amazon"
 
-    asin = (
-        item.get("asin")
-        or item.get("ASIN")
-        or ""
-    )
+    images = item.get("images") or item.get("Images") or {}
+    primary = images.get("primary") or images.get("Primary") or {}
+    large = primary.get("large") or primary.get("Large") or {}
+    medium = primary.get("medium") or primary.get("Medium") or {}
+    image_url = large.get("url") or large.get("URL") or medium.get("url") or medium.get("URL") or item.get("image") or item.get("image_url") or ""
 
-    # -------------------------
-    # TITOLO
-    # -------------------------
-
-    item_info = (
-        item.get("itemInfo")
-        or item.get("ItemInfo")
-        or {}
-    )
-
-    title_data = (
-        item_info.get("title")
-        or item_info.get("Title")
-        or {}
-    )
-
-    title = (
-        title_data.get("displayValue")
-        or title_data.get("DisplayValue")
-        or item.get("title")
-        or "Prodotto Amazon"
-    )
-
-    # -------------------------
-    # IMMAGINE
-    # -------------------------
-
-    images = (
-        item.get("images")
-        or item.get("Images")
-        or {}
-    )
-
-    primary = (
-        images.get("primary")
-        or images.get("Primary")
-        or {}
-    )
-
-    large = (
-        primary.get("large")
-        or primary.get("Large")
-        or {}
-    )
-
-    medium = (
-        primary.get("medium")
-        or primary.get("Medium")
-        or {}
-    )
-
-    image_url = (
-        large.get("url")
-        or large.get("URL")
-        or medium.get("url")
-        or medium.get("URL")
-        or item.get("image")
-        or item.get("image_url")
-        or ""
-    )
-
-    # -------------------------
-    # PREZZO
-    # -------------------------
-
+    # OffersV2.Price ha la struttura price.money.{amount,currency,displayAmount}.
     price = ""
-
-    # Nuova Creators API / OffersV2
-    offers_v2 = (
-        item.get("offersV2")
-        or item.get("OffersV2")
-        or {}
-    )
-
-    listings = (
-        offers_v2.get("listings")
-        or offers_v2.get("Listings")
-        or []
-    )
-
-    # Fallback per eventuali risposte compatibili
-    # con la vecchia PA-API.
+    offers_v2 = item.get("offersV2") or item.get("OffersV2") or {}
+    listings = offers_v2.get("listings") or offers_v2.get("Listings") or []
     if not listings:
-        offers = (
-            item.get("offers")
-            or item.get("Offers")
-            or {}
-        )
-
-        listings = (
-            offers.get("listings")
-            or offers.get("Listings")
-            or []
-        )
-
+        offers = item.get("offers") or item.get("Offers") or {}
+        listings = offers.get("listings") or offers.get("Listings") or []
     if listings:
         listing = listings[0] or {}
-
-        price_data = (
-            listing.get("price")
-            or listing.get("Price")
-            or {}
-        )
-
-        price = (
-            price_data.get("displayAmount")
-            or price_data.get("DisplayAmount")
-            or ""
-        )
-
-        # Alcune risposte possono fornire
-        # amount + currency anziché displayAmount.
+        price_data = listing.get("price") or listing.get("Price") or {}
+        money = price_data.get("money") or price_data.get("Money") or price_data
+        price = money.get("displayAmount") or money.get("DisplayAmount") or price_data.get("displayAmount") or price_data.get("DisplayAmount") or ""
         if not price:
-            amount = (
-                price_data.get("amount")
-                or price_data.get("Amount")
-            )
-
-            currency = (
-                price_data.get("currency")
-                or price_data.get("Currency")
-                or price_data.get("currencyCode")
-                or price_data.get("CurrencyCode")
-                or ""
-            )
-
+            amount = money.get("amount") if isinstance(money, dict) else None
+            if amount is None and isinstance(money, dict):
+                amount = money.get("Amount")
+            currency = ""
+            if isinstance(money, dict):
+                currency = money.get("currency") or money.get("Currency") or money.get("currencyCode") or money.get("CurrencyCode") or ""
             if amount not in (None, ""):
-                if currency == "EUR":
-                    price = f"{amount} €"
-                elif currency:
-                    price = f"{amount} {currency}"
-                else:
-                    price = str(amount)
+                price = f"{amount} €" if currency == "EUR" else (f"{amount} {currency}" if currency else str(amount))
 
-    # -------------------------
-    # LINK AMAZON
-    # -------------------------
+    # Categoria: preferenza al ProductGroup, poi Binding, poi Browse Node Amazon.
+    classifications = item_info.get("classifications") or item_info.get("Classifications") or {}
+    category = _display(classifications.get("productGroup") or classifications.get("ProductGroup")) or _display(classifications.get("binding") or classifications.get("Binding")) or ""
+    browse_info = item.get("browseNodeInfo") or item.get("BrowseNodeInfo") or {}
+    browse_nodes = browse_info.get("browseNodes") or browse_info.get("BrowseNodes") or []
+    if not category and browse_nodes:
+        node = browse_nodes[0] or {}
+        category = node.get("contextFreeName") or node.get("ContextFreeName") or node.get("displayName") or node.get("DisplayName") or ""
 
-    detail_url = (
-        item.get("detailPageURL")
-        or item.get("DetailPageURL")
-        or item.get("url")
-        or ""
-    )
+    # Caratteristiche chiave restituite da ItemInfo.Features.
+    features_data = item_info.get("features") or item_info.get("Features") or {}
+    feature_values = features_data.get("displayValues") or features_data.get("DisplayValues") or [] if isinstance(features_data, dict) else []
+    if not feature_values and isinstance(features_data, dict):
+        single = features_data.get("displayValue") or features_data.get("DisplayValue")
+        if single:
+            feature_values = single if isinstance(single, list) else [single]
+    features = "\n".join(str(v).strip() for v in feature_values if str(v).strip())
 
+    # Note: raccogliamo marca/produttore e informazioni prodotto/tecniche utili all'AI.
+    note_parts = []
+    byline = item_info.get("byLineInfo") or item_info.get("ByLineInfo") or {}
+    for label, keys in [
+        ("Marca", ("brand", "Brand")),
+        ("Produttore", ("manufacturer", "Manufacturer")),
+        ("Colore", ("color", "Color")),
+        ("Dimensione", ("size", "Size")),
+    ]:
+        source = byline if label in ("Marca", "Produttore") else (item_info.get("productInfo") or item_info.get("ProductInfo") or {})
+        raw = None
+        for key in keys:
+            if isinstance(source, dict) and source.get(key) not in (None, ""):
+                raw = source.get(key)
+                break
+        value = _format_value(raw)
+        if value:
+            note_parts.append(f"{label}: {value}")
+    technical = item_info.get("technicalInfo") or item_info.get("TechnicalInfo") or {}
+    tech_text = _format_value(technical)
+    if tech_text:
+        note_parts.append(f"Dati tecnici: {tech_text}")
+    notes = "\n".join(note_parts)
+
+    detail_url = item.get("detailPageURL") or item.get("DetailPageURL") or item.get("url") or ""
     if not detail_url and asin:
-        detail_url = (
-            f"https://{marketplace}/dp/{asin}"
-            f"?tag={partner_tag}"
-        )
+        detail_url = f"https://{marketplace}/dp/{asin}?tag={partner_tag}"
 
     return {
         "asin": asin,
@@ -467,4 +229,7 @@ def _normalize_item(item, partner_tag, marketplace):
         "image_url": image_url,
         "price": price,
         "amazon_url": detail_url,
+        "category": category,
+        "features": features,
+        "notes": notes,
     }
