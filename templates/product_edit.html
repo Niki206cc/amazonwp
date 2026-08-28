@@ -18,7 +18,13 @@
 <form method="post" class="panel form-grid">
   {% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}
   <label>Titolo<input name="title" value="{{ product.title }}" required></label>
-  <label>Link Amazon<input name="amazon_url" value="{{ product.amazon_url or '' }}"></label>
+  <label>Link Amazon
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="amazon-url-field" name="amazon_url" value="{{ product.amazon_url or '' }}" style="flex:1">
+      {% if product.amazon_url %}<a class="btn small secondary" href="{{ product.amazon_url }}" target="_blank" rel="noopener noreferrer" title="Apri il prodotto su Amazon" aria-label="Apri il prodotto su Amazon" style="white-space:nowrap;font-size:18px;padding:7px 10px">↗</a>{% endif %}
+    </div>
+    <small>Premi ↗ per aprire la pagina Amazon in una nuova scheda e recuperare eventuali informazioni mancanti.</small>
+  </label>
   <label>ASIN<input name="asin" value="{{ product.asin or '' }}"></label>
   <label>Prezzo<input name="price" value="{{ product.price or '' }}"></label>
   <label>Categoria<input name="category" value="{{ product.category or '' }}"></label>
