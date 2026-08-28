@@ -48,7 +48,8 @@
   <div class="card-body">
     <h3>{{ p.title }}</h3><p class="price">{{ p.price }}</p><p class="muted">{{ p.asin }}</p>
     <div class="actions">
-      <form method="post" action="{{ url_for('discover_add') }}">
+      <form method="post" action="{% if opportunity_json %}{{ url_for('discover_add') }}{% else %}{{ url_for('product_new') }}{% endif %}">
+        {% if not opportunity_json %}<input type="hidden" name="action" value="save">{% endif %}
         {% for k in ['asin','title','amazon_url','image_url','price','category','features','notes'] %}<input type="hidden" name="{{ k }}" value="{{ p.get(k,'') }}">{% endfor %}
         {% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}
         <button class="btn success">Genera / apri</button>
