@@ -15,21 +15,50 @@
 <form method="post" class="panel discover-form">
   {% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}
   <div class="preset-row">
-    <button name="mode" value="random" class="btn secondary">🎲 Casuali</button><button name="mode" value="trend" class="btn secondary">🔥 Trend</button><button name="mode" value="bestseller" class="btn secondary">⭐ Best Seller</button><button name="mode" value="new" class="btn secondary">🆕 Novità</button><button name="mode" value="deals" class="btn secondary">🏷️ Offerte</button><button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='30'">💶 Sotto 30 €</button><button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='50'">💶 Sotto 50 €</button><button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='100'">💶 Sotto 100 €</button>
+    <button name="mode" value="random" class="btn secondary">🎲 Casuali</button>
+    <button name="mode" value="trend" class="btn secondary">🔥 Trend</button>
+    <button name="mode" value="bestseller" class="btn secondary">⭐ Best Seller</button>
+    <button name="mode" value="new" class="btn secondary">🆕 Novità</button>
+    <button name="mode" value="deals" class="btn secondary">🏷️ Offerte</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='30'">💶 Sotto 30 €</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='50'">💶 Sotto 50 €</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='100'">💶 Sotto 100 €</button>
   </div>
   <div class="search-row"><input name="query" value="{{ query }}" placeholder="Ricerca libera, es. accessori auto"><input name="max_price" value="{{ max_price }}" placeholder="Prezzo max €"><button class="btn">Cerca</button></div>
 </form>
 {% if opportunity %}
-<section class="panel" style="border:2px solid rgba(0,0,0,.08)"><h2 style="margin-top:0">Hai trovato tu il prodotto su Amazon?</h2><p>Cerca manualmente su Amazon il prodotto più adatto a <strong>{{ opportunity.name }}</strong> e incolla qui il link. Il sistema importa i dati del prodotto e apre la scheda di modifica.</p><form method="post" action="{{ url_for('discover_manual_link') }}"><input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'><div class="search-row"><input name="amazon_url" required placeholder="Incolla il link del prodotto Amazon.it"><button class="btn success" type="submit">Importa</button></div></form></section>
+<section class="panel" style="border:2px solid rgba(0,0,0,.08)">
+  <h2 style="margin-top:0">Hai trovato tu il prodotto su Amazon?</h2>
+  <p>Cerca manualmente su Amazon il prodotto più adatto a <strong>{{ opportunity.name }}</strong> e incolla qui il link. Il sistema importa i dati del prodotto e apre la scheda di modifica: potrai correggere prezzo, immagine, caratteristiche e note prima di generare l’articolo.</p>
+  <form method="post" action="{{ url_for('discover_manual_link') }}">
+    <input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>
+    <div class="search-row"><input name="amazon_url" required placeholder="Incolla il link del prodotto Amazon.it"><button class="btn success" type="submit">Importa</button></div>
+  </form>
+</section>
 {% endif %}
 {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% set ns = namespace(visible=0, hidden=0) %}
+{% for p in products %}{% if p.dismissed or p.duplicate %}{% set ns.hidden = ns.hidden + 1 %}{% else %}{% set ns.visible = ns.visible + 1 %}{% endif %}{% endfor %}
+{% if ns.hidden %}<div class="muted" style="margin:10px 0 16px">{{ ns.hidden }} prodotto{% if ns.hidden != 1 %}i{% endif %} già usato{% if ns.hidden != 1 %}i{% endif %} o scartato{% if ns.hidden != 1 %}i{% endif %} nascosto{% if ns.hidden != 1 %}i{% endif %} automaticamente.</div>{% endif %}
 <div class="grid cards">
 {% for p in products %}
-<article class="card {% if p.dismissed %}disabled{% endif %}">{% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}<div class="card-body">{% if p.duplicate %}<span class="badge warning-badge">Già presente</span>{% endif %}<h3>{{ p.title }}</h3><p class="price">{{ p.price }}</p><p class="muted">{{ p.asin }}</p>{% if p.category %}<p class="muted">{{ p.category }}</p>{% endif %}
-{% if not p.dismissed %}<div class="actions">
-<form method="post" action="{% if opportunity_json %}{{ url_for('discover_add') }}{% else %}{{ url_for('product_new') }}{% endif %}">
-<input type="hidden" name="action" value="save">{% for k in ['asin','title','amazon_url','image_url','price','category','features','notes'] %}<input type="hidden" name="{{ k }}" value="{{ p.get(k,'') }}">{% endfor %}{% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}<button class="btn success">Genera / apri</button></form>
-<form method="post" action="{{ url_for('discover_dismiss') }}"><input type="hidden" name="asin" value="{{ p.asin }}"><input type="hidden" name="title" value="{{ p.title }}"><button class="btn danger">Scarta</button></form></div>{% else %}<span class="muted">Scartato</span>{% endif %}</div></article>
+{% if not p.dismissed and not p.duplicate %}
+<article class="card">
+  {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
+  <div class="card-body">
+    <h3>{{ p.title }}</h3><p class="price">{{ p.price }}</p><p class="muted">{{ p.asin }}</p>
+    <div class="actions">
+      <form method="post" action="{{ url_for('discover_add') }}">
+        {% for k in ['asin','title','amazon_url','image_url','price','category','features','notes'] %}<input type="hidden" name="{{ k }}" value="{{ p.get(k,'') }}">{% endfor %}
+        {% if opportunity_json %}<input type="hidden" name="opportunity_json" value='{{ opportunity_json|e }}'>{% endif %}
+        <button class="btn success">Genera / apri</button>
+      </form>
+      <form method="post" action="{{ url_for('discover_dismiss') }}"><input type="hidden" name="asin" value="{{ p.asin }}"><input type="hidden" name="title" value="{{ p.title }}"><button class="btn danger">Scarta</button></form>
+    </div>
+  </div>
+</article>
+{% endif %}
 {% endfor %}
 </div>
+{% if products and ns.visible == 0 %}<div class="panel empty">Tutti i prodotti trovati erano già presenti nel tuo archivio oppure erano stati scartati. Prova un'altra ricerca o premi di nuovo il filtro.</div>{% endif %}
 {% endblock %}
