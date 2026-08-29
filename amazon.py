@@ -83,11 +83,13 @@ def search_products(settings, mode="random", query="", max_price=None):
     }
     if max_price not in (None, ""):
         try:
-            max_price_float = float(str(max_price).replace(",", "."))
-            if max_price_float > 0:
-                payload["maxPrice"] = int(round(max_price_float * 100))
+            price_filter = float(str(max_price).replace(",", "."))
+            if price_filter < 0:
+                payload["minPrice"] = int(round(abs(price_filter) * 100))
+            elif price_filter > 0:
+                payload["maxPrice"] = int(round(price_filter * 100))
         except (TypeError, ValueError):
-            raise RuntimeError(f"Prezzo massimo non valido: {max_price}")
+            raise RuntimeError(f"Prezzo non valido: {max_price}")
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "application/json", "x-marketplace": marketplace}
     try:
@@ -145,17 +147,13 @@ def _format_value(value):
 def _normalize_item(item, partner_tag, marketplace):
     asin = item.get("asin") or item.get("ASIN") or ""
     item_info = item.get("itemInfo") or item.get("ItemInfo") or {}
-
     title_data = item_info.get("title") or item_info.get("Title") or {}
     title = _display(title_data) or item.get("title") or "Prodotto Amazon"
-
     images = item.get("images") or item.get("Images") or {}
     primary = images.get("primary") or images.get("Primary") or {}
     large = primary.get("large") or primary.get("Large") or {}
     medium = primary.get("medium") or primary.get("Medium") or {}
     image_url = large.get("url") or large.get("URL") or medium.get("url") or medium.get("URL") or item.get("image") or item.get("image_url") or ""
-
-    # OffersV2.Price ha la struttura price.money.{amount,currency,displayAmount}.
     price = ""
     offers_v2 = item.get("offersV2") or item.get("OffersV2") or {}
     listings = offers_v2.get("listings") or offers_v2.get("Listings") or []
@@ -169,67 +167,35 @@ def _normalize_item(item, partner_tag, marketplace):
         price = money.get("displayAmount") or money.get("DisplayAmount") or price_data.get("displayAmount") or price_data.get("DisplayAmount") or ""
         if not price:
             amount = money.get("amount") if isinstance(money, dict) else None
-            if amount is None and isinstance(money, dict):
-                amount = money.get("Amount")
+            if amount is None and isinstance(money, dict): amount = money.get("Amount")
             currency = ""
-            if isinstance(money, dict):
-                currency = money.get("currency") or money.get("Currency") or money.get("currencyCode") or money.get("CurrencyCode") or ""
-            if amount not in (None, ""):
-                price = f"{amount} €" if currency == "EUR" else (f"{amount} {currency}" if currency else str(amount))
-
-    # Categoria: preferenza al ProductGroup, poi Binding, poi Browse Node Amazon.
+            if isinstance(money, dict): currency = money.get("currency") or money.get("Currency") or money.get("currencyCode") or money.get("CurrencyCode") or ""
+            if amount not in (None, ""): price = f"{amount} €" if currency == "EUR" else (f"{amount} {currency}" if currency else str(amount))
     classifications = item_info.get("classifications") or item_info.get("Classifications") or {}
     category = _display(classifications.get("productGroup") or classifications.get("ProductGroup")) or _display(classifications.get("binding") or classifications.get("Binding")) or ""
     browse_info = item.get("browseNodeInfo") or item.get("BrowseNodeInfo") or {}
     browse_nodes = browse_info.get("browseNodes") or browse_info.get("BrowseNodes") or []
     if not category and browse_nodes:
-        node = browse_nodes[0] or {}
-        category = node.get("contextFreeName") or node.get("ContextFreeName") or node.get("displayName") or node.get("DisplayName") or ""
-
-    # Caratteristiche chiave restituite da ItemInfo.Features.
+        node = browse_nodes[0] or {}; category = node.get("contextFreeName") or node.get("ContextFreeName") or node.get("displayName") or node.get("DisplayName") or ""
     features_data = item_info.get("features") or item_info.get("Features") or {}
     feature_values = features_data.get("displayValues") or features_data.get("DisplayValues") or [] if isinstance(features_data, dict) else []
     if not feature_values and isinstance(features_data, dict):
         single = features_data.get("displayValue") or features_data.get("DisplayValue")
-        if single:
-            feature_values = single if isinstance(single, list) else [single]
+        if single: feature_values = single if isinstance(single, list) else [single]
     features = "\n".join(str(v).strip() for v in feature_values if str(v).strip())
-
-    # Note: raccogliamo marca/produttore e informazioni prodotto/tecniche utili all'AI.
     note_parts = []
     byline = item_info.get("byLineInfo") or item_info.get("ByLineInfo") or {}
-    for label, keys in [
-        ("Marca", ("brand", "Brand")),
-        ("Produttore", ("manufacturer", "Manufacturer")),
-        ("Colore", ("color", "Color")),
-        ("Dimensione", ("size", "Size")),
-    ]:
+    for label, keys in [("Marca", ("brand", "Brand")), ("Produttore", ("manufacturer", "Manufacturer")), ("Colore", ("color", "Color")), ("Dimensione", ("size", "Size"))]:
         source = byline if label in ("Marca", "Produttore") else (item_info.get("productInfo") or item_info.get("ProductInfo") or {})
         raw = None
         for key in keys:
-            if isinstance(source, dict) and source.get(key) not in (None, ""):
-                raw = source.get(key)
-                break
+            if isinstance(source, dict) and source.get(key) not in (None, ""): raw = source.get(key); break
         value = _format_value(raw)
-        if value:
-            note_parts.append(f"{label}: {value}")
+        if value: note_parts.append(f"{label}: {value}")
     technical = item_info.get("technicalInfo") or item_info.get("TechnicalInfo") or {}
     tech_text = _format_value(technical)
-    if tech_text:
-        note_parts.append(f"Dati tecnici: {tech_text}")
+    if tech_text: note_parts.append(f"Dati tecnici: {tech_text}")
     notes = "\n".join(note_parts)
-
     detail_url = item.get("detailPageURL") or item.get("DetailPageURL") or item.get("url") or ""
-    if not detail_url and asin:
-        detail_url = f"https://{marketplace}/dp/{asin}?tag={partner_tag}"
-
-    return {
-        "asin": asin,
-        "title": title,
-        "image_url": image_url,
-        "price": price,
-        "amazon_url": detail_url,
-        "category": category,
-        "features": features,
-        "notes": notes,
-    }
+    if not detail_url and asin: detail_url = f"https://{marketplace}/dp/{asin}?tag={partner_tag}"
+    return {"asin": asin, "title": title, "image_url": image_url, "price": price, "amazon_url": detail_url, "category": category, "features": features, "notes": notes}
