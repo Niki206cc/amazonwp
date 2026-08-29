@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 import html as html_lib
 import json
 import shutil
@@ -9,7 +10,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from config import SECRET_KEY, HOST, PORT, UPLOAD_DIR
 from database import init_db, get_db, get_settings, set_settings, now, log
 from ai import generate_article
-from amazon import extract_asin, search_products
+from amazon import extract_asin, search_products, high_res_image_url
 from mailer import send_article
 from scheduler import configure_scheduler, start_scheduler
 from quality import validate_article
@@ -21,12 +22,16 @@ app.secret_key = SECRET_KEY
 
 @app.context_processor
 def inject_ui_settings():
-    settings=get_settings()
+    settings=get_settings();autonomy_days=0;autonomy_end=""
     try:
         with get_db() as db:
             counts={"drafts":db.execute("SELECT COUNT(*) c FROM articles WHERE status='draft'").fetchone()["c"],"queued":db.execute("SELECT COUNT(*) c FROM queue").fetchone()["c"],"published":db.execute("SELECT COUNT(*) c FROM articles WHERE status='published'").fetchone()["c"]}
+        if counts["queued"]>0 and settings.get("scheduler_enabled")=="1":
+            slots=next_publish_slots(settings,counts["queued"])
+            if slots:
+                today=datetime.now(slots[-1].tzinfo).date();autonomy_days=max(1,(slots[-1].date()-today).days+1);autonomy_end=slots[-1].strftime("%d/%m")
     except Exception: counts={"drafts":0,"queued":0,"published":0}
-    return {"ui_show_discover":settings.get("show_discover","1")=="1","ui_counts":counts}
+    return {"ui_show_discover":settings.get("show_discover","1")=="1","ui_counts":counts,"ui_autonomy_days":autonomy_days,"ui_autonomy_end":autonomy_end,"ui_scheduler_enabled":settings.get("scheduler_enabled")=="1"}
 
 def affiliate_url(url,asin="",partner_tag=""):
     url=(url or "").strip(); asin=(asin or "").strip().upper() or extract_asin(url); partner_tag=(partner_tag or "").strip()
@@ -75,7 +80,7 @@ def scrape_amazon_product(url):
     if "api-services-support@amazon.com" in page or "Type the characters you see" in page or "Inserisci i caratteri" in page:raise RuntimeError("Amazon ha mostrato un controllo CAPTCHA. Riprova più tardi oppure compila il prodotto manualmente.")
     asin=extract_asin(url) or _first_match(page,[r'"asin"\s*:\s*"([A-Z0-9]{10})"',r'name="ASIN"\s+value="([A-Z0-9]{10})"'])
     title=_first_match(page,[r'id="productTitle"[^>]*>(.*?)</span>',r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"',r'<title>(.*?)</title>']); title=re.sub(r"\s*:\s*Amazon\.it.*$","",title,flags=re.I).strip()
-    image_url=_first_match(page,[r'id="landingImage"[^>]+data-old-hires="([^"]+)"',r'id="landingImage"[^>]+src="([^"]+)"',r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"'])
+    image_url=high_res_image_url(_first_match(page,[r'id="landingImage"[^>]+data-old-hires="([^"]+)"',r'id="landingImage"[^>]+src="([^"]+)"',r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"']))
     price=_first_match(page,[r'class="a-offscreen"[^>]*>([^<]*€[^<]*)</span>',r'id="priceblock_ourprice"[^>]*>(.*?)</span>',r'id="priceblock_dealprice"[^>]*>(.*?)</span>'])
     category=_first_match(page,[r'id="wayfinding-breadcrumbs_feature_div".*?<ul[^>]*>.*?<li[^>]*>.*?<a[^>]*>(.*?)</a>'])
     features=[]; feature_block=re.search(r'id="feature-bullets".*?</div>\s*</div>',page,re.I|re.S)
@@ -89,7 +94,7 @@ def scrape_amazon_product(url):
 
 def save_remote_image(url,product_id):
     if not url:return None
-    target=UPLOAD_DIR/f"product_{product_id}.jpg"
+    url=high_res_image_url(url);target=UPLOAD_DIR/f"product_{product_id}.jpg"
     try:
         req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
         with urllib.request.urlopen(req,timeout=20) as src,open(target,"wb") as dst:shutil.copyfileobj(src,dst)
@@ -149,7 +154,7 @@ def product_new():
             try:product=scrape_amazon_product(url);flash("Dati recuperati da Amazon. Controllali e poi salva il prodotto.","success");return render_template("product_form.html",product=product)
             except Exception as exc:flash(str(exc),"error");return render_template("product_form.html",product={"amazon_url":url})
         asin=request.form.get("asin","").strip().upper() or extract_asin(url);url=affiliate_url(url,asin,get_settings().get("amazon_partner_tag",""))
-        product={"asin":asin,"title":request.form.get("title","").strip(),"amazon_url":url,"image_url":request.form.get("image_url","").strip(),"price":request.form.get("price","").strip(),"category":request.form.get("category","").strip(),"features":request.form.get("features","").strip(),"notes":request.form.get("notes","").strip()}
+        product={"asin":asin,"title":request.form.get("title","").strip(),"amazon_url":url,"image_url":high_res_image_url(request.form.get("image_url","").strip()),"price":request.form.get("price","").strip(),"category":request.form.get("category","").strip(),"features":request.form.get("features","").strip(),"notes":request.form.get("notes","").strip()}
         if not product["title"]:flash("Inserisci almeno il titolo del prodotto.","error");return render_template("product_form.html",product=product)
         duplicate=duplicate_for(asin,url)
         with get_db() as db:
@@ -171,8 +176,8 @@ def product_edit(product_id):
     with get_db() as db:product=db.execute("SELECT * FROM products WHERE id=?",(product_id,)).fetchone();articles=db.execute("SELECT * FROM articles WHERE product_id=? ORDER BY id DESC",(product_id,)).fetchall()
     if not product:return "Prodotto non trovato",404
     if request.method=="POST":
-        url=request.form.get("amazon_url","").strip();asin=request.form.get("asin","").strip().upper() or extract_asin(url);url=affiliate_url(url,asin,get_settings().get("amazon_partner_tag",""))
-        with get_db() as db:db.execute("""UPDATE products SET asin=?,title=?,amazon_url=?,image_url=?,price=?,category=?,features=?,notes=?,updated_at=? WHERE id=?""",(asin,request.form.get("title",""),url,request.form.get("image_url",""),request.form.get("price",""),request.form.get("category",""),request.form.get("features",""),request.form.get("notes",""),now(),product_id))
+        url=request.form.get("amazon_url","").strip();asin=request.form.get("asin","").strip().upper() or extract_asin(url);url=affiliate_url(url,asin,get_settings().get("amazon_partner_tag",""));image_url=high_res_image_url(request.form.get("image_url","").strip())
+        with get_db() as db:db.execute("""UPDATE products SET asin=?,title=?,amazon_url=?,image_url=?,price=?,category=?,features=?,notes=?,updated_at=? WHERE id=?""",(asin,request.form.get("title",""),url,image_url,request.form.get("price",""),request.form.get("category",""),request.form.get("features",""),request.form.get("notes",""),now(),product_id))
         flash("Prodotto aggiornato.","success");return redirect(url_for("product_edit",product_id=product_id))
     return render_template("product_edit.html",product=product,articles=articles,duplicate=duplicate_for(product["asin"],product["amazon_url"],product_id),opportunity=opportunity,opportunity_json=opportunity_json)
 
@@ -330,9 +335,9 @@ def discover():
 
 @app.post("/discover/add")
 def discover_add():
-    asin=request.form.get("asin","");settings=get_settings();amazon_url=affiliate_url(request.form.get("amazon_url",""),asin,settings.get("amazon_partner_tag",""));opportunity_json=request.form.get("opportunity_json","").strip()
+    asin=request.form.get("asin","");settings=get_settings();amazon_url=affiliate_url(request.form.get("amazon_url",""),asin,settings.get("amazon_partner_tag",""));opportunity_json=request.form.get("opportunity_json","").strip();image_url=high_res_image_url(request.form.get("image_url","").strip())
     with get_db() as db:
-        cur=db.execute("""INSERT INTO products(asin,title,amazon_url,image_url,price,category,features,notes,source,status,created_at,updated_at) VALUES(?,?,?,?,?,'','','','amazon','draft',?,?)""",(asin,request.form.get("title",""),amazon_url,request.form.get("image_url",""),request.form.get("price",""),now(),now()));product_id=cur.lastrowid;local=save_remote_image(request.form.get("image_url",""),product_id)
+        cur=db.execute("""INSERT INTO products(asin,title,amazon_url,image_url,price,category,features,notes,source,status,created_at,updated_at) VALUES(?,?,?,?,?,'','','','amazon','draft',?,?)""",(asin,request.form.get("title",""),amazon_url,image_url,request.form.get("price",""),now(),now()));product_id=cur.lastrowid;local=save_remote_image(image_url,product_id)
         if local:db.execute("UPDATE products SET local_image=? WHERE id=?",(local,product_id))
     return redirect(url_for("product_edit",product_id=product_id,opportunity=opportunity_json) if opportunity_json else url_for("product_edit",product_id=product_id))
 
