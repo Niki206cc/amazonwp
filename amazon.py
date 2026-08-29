@@ -10,7 +10,49 @@ import requests
 SEARCH_PRESETS = {
     "random": ["smart home", "accessori auto", "cucina", "fai da te", "giardino", "sport", "gadget utili"],
     "trend": ["prodotti di tendenza", "gadget tecnologia", "casa intelligente"],
-    "bestseller": ["best seller", "più venduti"],
+    "bestseller": [
+        "friggitrice ad aria",
+        "robot aspirapolvere",
+        "aspirapolvere senza fili",
+        "macchina caffè",
+        "smartwatch",
+        "cuffie bluetooth",
+        "power bank",
+        "telecamera wifi",
+        "presa smart",
+        "lampada led",
+        "accessori auto",
+        "caricatore auto usb c",
+        "avviatore batteria auto",
+        "compressore portatile auto",
+        "utensili fai da te",
+        "avvitatore a batteria",
+        "idropulitrice",
+        "tagliaerba",
+        "barbecue",
+        "accessori giardino",
+        "borraccia termica",
+        "zaino trekking",
+        "scarpe trekking",
+        "fitness casa",
+        "bilancia smart",
+        "massaggiatore cervicale",
+        "ventilatore",
+        "deumidificatore",
+        "purificatore aria",
+        "mini pc",
+        "tablet",
+        "speaker bluetooth",
+        "proiettore portatile",
+        "tastiera wireless",
+        "mouse wireless",
+        "webcam",
+        "stampante etichette",
+        "organizer casa",
+        "contenitori cucina",
+        "coltelli cucina",
+        "pentole antiaderenti",
+    ],
     "new": ["novità", "nuovi arrivi"],
     "deals": ["offerte", "occasioni"],
 }
@@ -33,12 +75,7 @@ def extract_asin(url):
 
 
 def high_res_image_url(url):
-    """Converte un'immagine prodotto Amazon nella variante grande SL1500.
-
-    Amazon spesso restituisce la stessa foto come _AC_SX679_, _SL500_ o senza
-    trasformazione. Per l'immagine editoriale usiamo la variante _AC_SL1500_,
-    equivalente a quella aperta dalla galleria prodotto quando disponibile.
-    """
+    """Converte un'immagine prodotto Amazon nella variante grande SL1500."""
     url = (url or "").strip()
     if not url:
         return ""
@@ -56,16 +93,30 @@ def high_res_image_url(url):
     return f"{prefix}{image_id}._AC_SL1500_.{extension}{query or ''}"
 
 
-def _page_primary_image(asin, marketplace="www.amazon.it"):
-    """Legge la pagina prodotto e restituisce la vera immagine principale migliore.
+def _recent_purchases_from_page(page):
+    """Recupera il dato pubblico Amazon tipo '100+ acquistati nel mese scorso'."""
+    if not page:
+        return ""
+    plain = html_lib.unescape(page)
+    plain = re.sub(r"<[^>]+>", " ", plain)
+    plain = re.sub(r"\s+", " ", plain).strip()
+    patterns = [
+        r"(\d[\d\.,]*\+?\s+(?:acquistati|acquistato|acquistate|acquistata)\s+nel\s+mese\s+scorso)",
+        r"(\d[\d\.,]*\+?\s+(?:acquistati|acquistato|acquistate|acquistata)\s+nell['’]?ultimo\s+mese)",
+        r"(\d[\d\.,]*\+?\s+bought\s+in\s+(?:the\s+)?past\s+month)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, plain, re.I)
+        if match:
+            return re.sub(r"\s+", " ", match.group(1)).strip()
+    return ""
 
-    SearchItems può restituire un'immagine catalogo diversa dalla foto principale
-    mostrata nella pagina Amazon. Qui controlliamo landingImage e data-a-dynamic-image
-    e scegliamo la variante con la maggiore area dichiarata.
-    """
+
+def _page_product_extras(asin, marketplace="www.amazon.it"):
+    """Legge la pagina prodotto per immagine principale e acquisti recenti pubblici."""
     asin = (asin or "").strip().upper()
     if not asin:
-        return ""
+        return {"image_url": "", "recent_purchases": ""}
     url = f"https://{marketplace}/dp/{asin}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
@@ -75,10 +126,10 @@ def _page_primary_image(asin, marketplace="www.amazon.it"):
     try:
         response = requests.get(url, headers=headers, timeout=12)
         if not response.ok:
-            return ""
+            return {"image_url": "", "recent_purchases": ""}
         page = response.text
         if "Type the characters you see" in page or "Inserisci i caratteri" in page:
-            return ""
+            return {"image_url": "", "recent_purchases": ""}
 
         candidates = []
         dynamic_matches = re.findall(r'data-a-dynamic-image=["\']([^"\']+)["\']', page, re.I)
@@ -109,12 +160,17 @@ def _page_primary_image(asin, marketplace="www.amazon.it"):
             if image_url:
                 candidates.append((1, html_lib.unescape(image_url)))
 
+        image_url = ""
         if candidates:
             candidates.sort(key=lambda item: item[0], reverse=True)
-            return high_res_image_url(candidates[0][1])
+            image_url = high_res_image_url(candidates[0][1])
+
+        return {
+            "image_url": image_url,
+            "recent_purchases": _recent_purchases_from_page(page),
+        }
     except Exception:
-        return ""
-    return ""
+        return {"image_url": "", "recent_purchases": ""}
 
 
 def _token(settings):
@@ -206,16 +262,22 @@ def search_products(settings, mode="random", query="", max_price=None):
         try:
             with ThreadPoolExecutor(max_workers=min(6, len(normalized))) as executor:
                 futures = {
-                    executor.submit(_page_primary_image, product.get("asin"), marketplace): index
+                    executor.submit(_page_product_extras, product.get("asin"), marketplace): index
                     for index, product in enumerate(normalized)
                     if product.get("asin")
                 }
                 for future in as_completed(futures):
                     index = futures[future]
                     try:
-                        page_image = future.result()
-                        if page_image:
-                            normalized[index]["image_url"] = high_res_image_url(page_image)
+                        extras = future.result() or {}
+                        if extras.get("image_url"):
+                            normalized[index]["image_url"] = high_res_image_url(extras["image_url"])
+                        recent = (extras.get("recent_purchases") or "").strip()
+                        normalized[index]["recent_purchases"] = recent
+                        if recent:
+                            note = (normalized[index].get("notes") or "").strip()
+                            recent_note = f"Acquisti recenti Amazon: {recent}"
+                            normalized[index]["notes"] = f"{note}\n{recent_note}".strip() if note else recent_note
                     except Exception:
                         pass
         except Exception:
@@ -276,21 +338,26 @@ def _normalize_item(item, partner_tag, marketplace):
         price = money.get("displayAmount") or money.get("DisplayAmount") or price_data.get("displayAmount") or price_data.get("DisplayAmount") or ""
         if not price:
             amount = money.get("amount") if isinstance(money, dict) else None
-            if amount is None and isinstance(money, dict): amount = money.get("Amount")
+            if amount is None and isinstance(money, dict):
+                amount = money.get("Amount")
             currency = ""
-            if isinstance(money, dict): currency = money.get("currency") or money.get("Currency") or money.get("currencyCode") or money.get("CurrencyCode") or ""
-            if amount not in (None, ""): price = f"{amount} €" if currency == "EUR" else (f"{amount} {currency}" if currency else str(amount))
+            if isinstance(money, dict):
+                currency = money.get("currency") or money.get("Currency") or money.get("currencyCode") or money.get("CurrencyCode") or ""
+            if amount not in (None, ""):
+                price = f"{amount} €" if currency == "EUR" else (f"{amount} {currency}" if currency else str(amount))
     classifications = item_info.get("classifications") or item_info.get("Classifications") or {}
     category = _display(classifications.get("productGroup") or classifications.get("ProductGroup")) or _display(classifications.get("binding") or classifications.get("Binding")) or ""
     browse_info = item.get("browseNodeInfo") or item.get("BrowseNodeInfo") or {}
     browse_nodes = browse_info.get("browseNodes") or browse_info.get("BrowseNodes") or []
     if not category and browse_nodes:
-        node = browse_nodes[0] or {}; category = node.get("contextFreeName") or node.get("ContextFreeName") or node.get("displayName") or node.get("DisplayName") or ""
+        node = browse_nodes[0] or {}
+        category = node.get("contextFreeName") or node.get("ContextFreeName") or node.get("displayName") or node.get("DisplayName") or ""
     features_data = item_info.get("features") or item_info.get("Features") or {}
-    feature_values = features_data.get("displayValues") or features_data.get("DisplayValues") or [] if isinstance(features_data, dict) else []
+    feature_values = (features_data.get("displayValues") or features_data.get("DisplayValues") or []) if isinstance(features_data, dict) else []
     if not feature_values and isinstance(features_data, dict):
         single = features_data.get("displayValue") or features_data.get("DisplayValue")
-        if single: feature_values = single if isinstance(single, list) else [single]
+        if single:
+            feature_values = single if isinstance(single, list) else [single]
     features = "\n".join(str(v).strip() for v in feature_values if str(v).strip())
     note_parts = []
     byline = item_info.get("byLineInfo") or item_info.get("ByLineInfo") or {}
@@ -298,13 +365,28 @@ def _normalize_item(item, partner_tag, marketplace):
         source = byline if label in ("Marca", "Produttore") else (item_info.get("productInfo") or item_info.get("ProductInfo") or {})
         raw = None
         for key in keys:
-            if isinstance(source, dict) and source.get(key) not in (None, ""): raw = source.get(key); break
+            if isinstance(source, dict) and source.get(key) not in (None, ""):
+                raw = source.get(key)
+                break
         value = _format_value(raw)
-        if value: note_parts.append(f"{label}: {value}")
+        if value:
+            note_parts.append(f"{label}: {value}")
     technical = item_info.get("technicalInfo") or item_info.get("TechnicalInfo") or {}
     tech_text = _format_value(technical)
-    if tech_text: note_parts.append(f"Dati tecnici: {tech_text}")
+    if tech_text:
+        note_parts.append(f"Dati tecnici: {tech_text}")
     notes = "\n".join(note_parts)
     detail_url = item.get("detailPageURL") or item.get("DetailPageURL") or item.get("url") or ""
-    if not detail_url and asin: detail_url = f"https://{marketplace}/dp/{asin}?tag={partner_tag}"
-    return {"asin": asin, "title": title, "image_url": image_url, "price": price, "amazon_url": detail_url, "category": category, "features": features, "notes": notes}
+    if not detail_url and asin:
+        detail_url = f"https://{marketplace}/dp/{asin}?tag={partner_tag}"
+    return {
+        "asin": asin,
+        "title": title,
+        "image_url": image_url,
+        "price": price,
+        "amazon_url": detail_url,
+        "category": category,
+        "features": features,
+        "notes": notes,
+        "recent_purchases": "",
+    }
