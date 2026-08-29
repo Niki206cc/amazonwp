@@ -1,5 +1,8 @@
 import random
 import re
+import json
+import html as html_lib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, parse_qs
 
 import requests
@@ -30,27 +33,78 @@ def extract_asin(url):
 
 
 def high_res_image_url(url):
-    """Rimuove i parametri di ridimensionamento dalle immagini Amazon.
-
-    Esempio:
-    https://m.media-amazon.com/images/I/4185loLuyLL._SL500_.jpg
-    diventa:
-    https://m.media-amazon.com/images/I/4185loLuyLL.jpg
-
-    L'URL senza trasformazioni punta normalmente al file originale con la
-    risoluzione massima disponibile sul CDN Amazon.
-    """
+    """Rimuove solo i suffissi di ridimensionamento da una stessa immagine Amazon."""
     url = (url or "").strip()
     if not url:
         return ""
     if "media-amazon.com" not in url.lower() and "ssl-images-amazon.com" not in url.lower():
         return url
-    return re.sub(
-        r"\._[^.]+_\.(?=(?:jpe?g|png|webp)(?:$|\?))",
-        ".",
-        url,
-        flags=re.I,
-    )
+    return re.sub(r"\._[^.]+_\.(?=(?:jpe?g|png|webp)(?:$|\?))", ".", url, flags=re.I)
+
+
+def _page_primary_image(asin, marketplace="www.amazon.it"):
+    """Legge la pagina prodotto e restituisce la vera immagine principale migliore.
+
+    SearchItems può restituire un'immagine catalogo diversa dalla foto principale
+    mostrata nella pagina Amazon. Qui controlliamo landingImage e data-a-dynamic-image
+    e scegliamo la variante con la maggiore area dichiarata.
+    """
+    asin = (asin or "").strip().upper()
+    if not asin:
+        return ""
+    url = f"https://{marketplace}/dp/{asin}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+        "Accept-Language": "it-IT,it;q=0.9,en;q=0.6",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=12)
+        if not response.ok:
+            return ""
+        page = response.text
+        if "Type the characters you see" in page or "Inserisci i caratteri" in page:
+            return ""
+
+        # Amazon espone spesso l'immagine principale in data-a-dynamic-image
+        # come JSON: {"url":[larghezza,altezza], ...}. Scegliamo la più grande.
+        candidates = []
+        dynamic_matches = re.findall(r'data-a-dynamic-image=["\']([^"\']+)["\']', page, re.I)
+        for raw in dynamic_matches[:5]:
+            try:
+                data = json.loads(html_lib.unescape(raw))
+                if isinstance(data, dict):
+                    for image_url, size in data.items():
+                        if not isinstance(image_url, str) or "media-amazon" not in image_url:
+                            continue
+                        area = 0
+                        if isinstance(size, (list, tuple)) and len(size) >= 2:
+                            try:
+                                area = int(size[0]) * int(size[1])
+                            except Exception:
+                                area = 0
+                        candidates.append((area, image_url))
+            except Exception:
+                continue
+
+        # data-old-hires è normalmente l'originale/zoom della landing image.
+        old_hires = re.findall(r'id=["\']landingImage["\'][^>]+data-old-hires=["\']([^"\']+)', page, re.I | re.S)
+        for image_url in old_hires:
+            if image_url:
+                candidates.append((10**12, html_lib.unescape(image_url)))
+
+        # Fallback sulla src della landing image.
+        src_matches = re.findall(r'id=["\']landingImage["\'][^>]+src=["\']([^"\']+)', page, re.I | re.S)
+        for image_url in src_matches:
+            if image_url:
+                candidates.append((1, html_lib.unescape(image_url)))
+
+        if candidates:
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            return candidates[0][1]
+    except Exception:
+        return ""
+    return ""
 
 
 def _token(settings):
@@ -137,6 +191,28 @@ def search_products(settings, mode="random", query="", max_price=None):
                 normalized.append(product)
         except Exception:
             continue
+
+    # Verifica in parallelo la foto realmente usata nella pagina prodotto.
+    # In questo modo SearchItems resta veloce e la ricerca non fa 10 richieste sequenziali.
+    if normalized:
+        try:
+            with ThreadPoolExecutor(max_workers=min(6, len(normalized))) as executor:
+                futures = {
+                    executor.submit(_page_primary_image, product.get("asin"), marketplace): index
+                    for index, product in enumerate(normalized)
+                    if product.get("asin")
+                }
+                for future in as_completed(futures):
+                    index = futures[future]
+                    try:
+                        page_image = future.result()
+                        if page_image:
+                            normalized[index]["image_url"] = page_image
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     return normalized
 
 
