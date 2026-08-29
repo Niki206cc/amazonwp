@@ -46,7 +46,10 @@
 <article class="card">
   {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
   <div class="card-body">
-    <h3>{{ p.title }}</h3><p class="price">{{ p.price }}</p><p class="muted">{{ p.asin }}</p>
+    <h3>{{ p.title }}</h3>
+    <p class="price">{{ p.price }}</p>
+    {% if p.recent_purchases %}<p style="margin:6px 0;font-weight:700">🔥 {{ p.recent_purchases }}</p>{% endif %}
+    <p class="muted">{{ p.asin }}</p>
     <div class="actions">
       <form method="post" action="{% if opportunity_json %}{{ url_for('discover_add') }}{% else %}{{ url_for('product_new') }}{% endif %}">
         {% if not opportunity_json %}<input type="hidden" name="action" value="save">{% endif %}
