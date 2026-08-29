@@ -29,6 +29,30 @@ def extract_asin(url):
     return ""
 
 
+def high_res_image_url(url):
+    """Rimuove i parametri di ridimensionamento dalle immagini Amazon.
+
+    Esempio:
+    https://m.media-amazon.com/images/I/4185loLuyLL._SL500_.jpg
+    diventa:
+    https://m.media-amazon.com/images/I/4185loLuyLL.jpg
+
+    L'URL senza trasformazioni punta normalmente al file originale con la
+    risoluzione massima disponibile sul CDN Amazon.
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if "media-amazon.com" not in url.lower() and "ssl-images-amazon.com" not in url.lower():
+        return url
+    return re.sub(
+        r"\._[^.]+_\.(?=(?:jpe?g|png|webp)(?:$|\?))",
+        ".",
+        url,
+        flags=re.I,
+    )
+
+
 def _token(settings):
     token_url = (settings.get("amazon_token_url") or "https://api.amazon.co.uk/auth/o2/token").strip()
     credential_id = settings.get("amazon_credential_id", "").strip()
@@ -154,6 +178,7 @@ def _normalize_item(item, partner_tag, marketplace):
     large = primary.get("large") or primary.get("Large") or {}
     medium = primary.get("medium") or primary.get("Medium") or {}
     image_url = large.get("url") or large.get("URL") or medium.get("url") or medium.get("URL") or item.get("image") or item.get("image_url") or ""
+    image_url = high_res_image_url(image_url)
     price = ""
     offers_v2 = item.get("offersV2") or item.get("OffersV2") or {}
     listings = offers_v2.get("listings") or offers_v2.get("Listings") or []
