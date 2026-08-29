@@ -9,8 +9,9 @@
 <body>
 <header class="topbar">
   <div>
-    <div class="brand">Amazon Articoli MP <span style="font-size:12px;opacity:.7;font-weight:400">v1.7.7</span></div>
+    <div class="brand">Amazon Articoli MP <span style="font-size:12px;opacity:.7;font-weight:400">v1.7.8</span></div>
     <div style="font-size:12px;opacity:.75;margin-top:3px"><a href="{{ url_for('drafts_page') }}" style="color:inherit;text-decoration:underline">Bozze: {{ ui_counts.drafts }}</a> · <a href="{{ url_for('queue_page') }}" style="color:inherit;text-decoration:underline">In coda: {{ ui_counts.queued }}</a> · <a href="{{ url_for('published_page') }}" style="color:inherit;text-decoration:underline">Pubblicati: {{ ui_counts.published }}</a></div>
+    <div style="font-size:12px;opacity:.85;margin-top:3px">Autonomia: {% if ui_counts.queued == 0 %}<strong>0 giorni</strong>{% elif not ui_scheduler_enabled %}<strong>scheduler disattivato</strong>{% elif ui_autonomy_days %}<strong>~{{ ui_autonomy_days }} giorni</strong>{% if ui_autonomy_end %} · coda fino al {{ ui_autonomy_end }}{% endif %}{% else %}<strong>non calcolabile</strong>{% endif %}</div>
   </div>
   <nav>
     <a href="{{ url_for('index') }}">Prodotti</a>
