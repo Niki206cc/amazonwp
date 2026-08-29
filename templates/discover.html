@@ -22,9 +22,9 @@
     <button name="mode" value="deals" class="btn secondary">🏷️ Offerte</button>
     <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='30'">💶 Sotto 30 €</button>
     <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='50'">💶 Sotto 50 €</button>
-    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='100'">💶 Sotto 100 €</button>
+    <button name="mode" value="random" class="btn secondary" onclick="this.form.max_price.value='-50'">💶 Sopra 50 €</button>
   </div>
-  <div class="search-row"><input name="query" value="{{ query }}" placeholder="Ricerca libera, es. accessori auto"><input name="max_price" value="{{ max_price }}" placeholder="Prezzo max €"><button class="btn">Cerca</button></div>
+  <div class="search-row"><input name="query" value="{{ query }}" placeholder="Ricerca libera, es. accessori auto"><input name="max_price" value="{% if max_price == '-50' %}{% else %}{{ max_price }}{% endif %}" placeholder="Prezzo max €"><button class="btn">Cerca</button></div>
 </form>
 {% if opportunity %}
 <section class="panel" style="border:2px solid rgba(0,0,0,.08)">
